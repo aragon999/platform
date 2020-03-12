@@ -103,15 +103,15 @@ class HttpKernel
             return self::$connection;
         }
 
-        $url = $_ENV['DATABASE_URL']
-            ?? $_SERVER['DATABASE_URL']
-            ?? getenv('DATABASE_URL');
-
         $parameters = [
-            'url' => $url,
+            'url' => self::getEnvVariable('DATABASE_URL'),
             'charset' => 'utf8mb4',
         ];
 
+        $unixSocket = self::getEnvVariable('DATABASE_UNIX_SOCKET');
+        if ($unixSocket) {
+            $parameters['unix_socket'] = $unixSocket;
+        }
         self::$connection = DriverManager::getConnection($parameters, new Configuration());
 
         return self::$connection;
@@ -223,5 +223,18 @@ class HttpKernel
         $this->pluginLoader = new DbalKernelPluginLoader($this->classLoader, null, $connection);
 
         return $this->pluginLoader;
+    }
+
+    private static function getEnvVariable(string $variableName): ?string
+    {
+        $env = $_ENV[$variableName]
+            ?? $_SERVER[$variableName]
+            ?? getenv($variableName);
+
+        if ($env === false) {
+            return null;
+        }
+
+        return $env;
     }
 }

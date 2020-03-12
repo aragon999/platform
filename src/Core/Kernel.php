@@ -151,13 +151,15 @@ class Kernel extends HttpKernel
     public static function getConnection(): Connection
     {
         if (!self::$connection) {
-            $url = $_ENV['DATABASE_URL']
-                ?? $_SERVER['DATABASE_URL']
-                ?? getenv('DATABASE_URL');
             $parameters = [
-                'url' => $url,
+                'url' => self::getEnvVariable('DATABASE_URL'),
                 'charset' => 'utf8mb4',
             ];
+
+            $unixSocket = self::getEnvVariable('DATABASE_UNIX_SOCKET');
+            if ($unixSocket) {
+                $parameters['unix_socket'] = $unixSocket;
+            }
 
             self::$connection = DriverManager::getConnection($parameters, new Configuration());
         }
@@ -362,5 +364,18 @@ class Kernel extends HttpKernel
 
         $this->shopwareVersion = $version;
         $this->shopwareVersionRevision = $hash;
+    }
+
+    private static function getEnvVariable(string $variableName): ?string
+    {
+        $env = $_ENV[$variableName]
+            ?? $_SERVER[$variableName]
+            ?? getenv($variableName);
+
+        if ($env === false) {
+            return null;
+        }
+
+        return $env;
     }
 }
