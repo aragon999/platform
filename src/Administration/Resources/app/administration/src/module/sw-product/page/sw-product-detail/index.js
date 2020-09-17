@@ -430,6 +430,10 @@ Component.register('sw-product-detail', {
         },
 
         onSave() {
+            if (!this.validateProductPurchase()) {
+                return;
+            }
+
             if (!this.productId) {
                 if (this.productNumberPreview === this.product.productNumber) {
                     this.numberRangeService.reserve('product').then((response) => {
@@ -438,6 +442,7 @@ Component.register('sw-product-detail', {
                     });
                 }
             }
+
 
             this.isSaveSuccessful = false;
 
@@ -636,6 +641,20 @@ Component.register('sw-product-detail', {
         onDuplicateFinish(duplicate) {
             this.cloning = false;
             this.$router.push({ name: 'sw.product.detail', params: { id: duplicate.id } });
+        },
+
+        validateProductPurchase() {
+            const product = this.product;
+
+            if (product.minPurchase >= product.maxPurchase) {
+                this.createNotificationInfo({
+                    message: this.$tc('sw-product.detail.errorMinMaxPurchase')
+                });
+
+                return false;
+            }
+
+            return true;
         }
     }
 });
