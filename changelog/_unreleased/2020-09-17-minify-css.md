@@ -6,5 +6,5 @@ author_email: max@swk-web.com
 author_github: @aragon999
 ---
 # Storefront
-*  Added `\Shopware\Storefront\Theme\Autoprefixer` with the ability to minify compiled css
 *  Changed the behaviour of the autoprefixer to minify the compiled CSS
+*  Changed the version of `padaliyajay/php-autoprefixer` from 1.2 to 1.3
