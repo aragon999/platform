@@ -2,353 +2,362 @@
 
 namespace Shopware\Tests\Unit\Core\Content\Product\SalesChannel\Review;
 
-use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
-use Shopware\Core\Checkout\Cart\Delivery\Struct\ShippingLocation;
-use Shopware\Core\Checkout\Customer\Aggregate\CustomerGroup\CustomerGroupEntity;
 use Shopware\Core\Checkout\Customer\CustomerEntity;
-use Shopware\Core\Checkout\Payment\PaymentMethodEntity;
-use Shopware\Core\Checkout\Shipping\ShippingMethodEntity;
 use Shopware\Core\Content\Product\Aggregate\ProductReview\ProductReviewCollection;
 use Shopware\Core\Content\Product\Aggregate\ProductReview\ProductReviewDefinition;
 use Shopware\Core\Content\Product\Aggregate\ProductReview\ProductReviewEntity;
+use Shopware\Core\Content\Product\ProductException;
+use Shopware\Core\Content\Product\SalesChannel\Review\AbstractProductReviewRoute;
+use Shopware\Core\Content\Product\SalesChannel\Review\Event\ProductReviewsLoadedEvent;
 use Shopware\Core\Content\Product\SalesChannel\Review\ProductReviewLoader;
-use Shopware\Core\Content\Product\SalesChannel\Review\ProductReviewRoute;
 use Shopware\Core\Content\Product\SalesChannel\Review\ProductReviewRouteResponse;
 use Shopware\Core\Framework\Context;
-use Shopware\Core\Framework\DataAbstractionLayer\Pricing\CashRoundingConfig;
-use Shopware\Core\Framework\DataAbstractionLayer\Search\Aggregation\Bucket\FilterAggregation;
-use Shopware\Core\Framework\DataAbstractionLayer\Search\Aggregation\Bucket\TermsAggregation;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\AggregationResult\AggregationResultCollection;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\AggregationResult\Bucket\Bucket;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\AggregationResult\Bucket\TermsResult;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
-use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\MultiFilter;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\RangeFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
-use Shopware\Core\Framework\Feature;
 use Shopware\Core\Framework\Uuid\Uuid;
-use Shopware\Core\System\Country\CountryEntity;
-use Shopware\Core\System\Currency\CurrencyEntity;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Shopware\Core\System\SalesChannel\SalesChannelEntity;
-use Shopware\Core\System\SystemConfig\SystemConfigService;
-use Shopware\Core\System\Tax\TaxCollection;
-use Shopware\Core\Test\Stub\SystemConfigService\StaticSystemConfigService;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\Request;
 
 /**
  * @internal
+ *
+ * @covers \Shopware\Core\Content\Product\SalesChannel\Review\ProductReviewLoader
  */
-#[CoversClass(ProductReviewLoader::class)]
 class ProductReviewLoaderTest extends TestCase
 {
-    private SystemConfigService $systemConfigService;
+    private MockObject&AbstractProductReviewRoute $route;
+
+    private MockObject&EventDispatcherInterface $eventDispatcher;
+
+    private ProductReviewLoader $productReviewLoader;
 
     protected function setUp(): void
     {
-        Feature::skipTestIfInActive('v6.7.0.0', $this);
+        $this->route = $this->createMock(AbstractProductReviewRoute::class);
+        $this->eventDispatcher = $this->createMock(EventDispatcherInterface::class);
 
-        $this->systemConfigService = new StaticSystemConfigService();
-        $this->systemConfigService->set('core.listing.reviewsPerPage', 10, 'salesChannelId');
+        $this->productReviewLoader = new ProductReviewLoader(
+            $this->route,
+            $this->eventDispatcher
+        );
     }
 
-    public function testItLoadsReviewsWithProductId(): void
+    public function testLoadThrowsParameterExceptionWhenProductIdMissing(): void
     {
-        $reviewId = Uuid::randomHex();
+        $this->expectException(ProductException::class);
+
+        $salesChannelContext = $this->createMock(SalesChannelContext::class);
+        $this->productReviewLoader->load(new Request(), $salesChannelContext);
+    }
+
+    public function testLoadWithoutCustomer(): void
+    {
+        $request = new Request();
         $productId = Uuid::randomHex();
-        $request = new Request([], [], ['productId' => $productId]);
-        $salesChannelContext = $this->getSalesChannelContext(false);
-
-        $review = $this->getReviewEntity($reviewId);
-
-        $reviews = new ProductReviewCollection([
-            $review,
+        $parentId = Uuid::randomHex();
+        $request->request->add([
+            'productId' => $productId,
+            'parentId' => $parentId,
         ]);
 
-        $productReviewRouteMock = $this->createMock(ProductReviewRoute::class);
-        $productReviewLoader = $this->getProductReviewLoader($productReviewRouteMock);
+        /** @var MockObject&SalesChannelContext $salesChannelContext */
+        $salesChannelContext = $this->createMock(SalesChannelContext::class);
+        $salesChannel = new SalesChannelEntity();
+        $salesChannel->setId(Uuid::randomHex());
 
-        $reviewResult = $this->getDefaultResult($reviews, $request, $salesChannelContext);
+        $salesChannelContext->expects(static::exactly(2))->method('getCustomer')->willReturn(null);
 
-        $productReviewRouteMock
+        $review1 = $this->createReview();
+        $review2 = $this->createReview();
+        $reviewRouteResult = $this->createProductReviewRouteResponse([
+            $review1->getId() => $review1,
+            $review2->getId() => $review2,
+        ], $this->createRatingPointsAggregation([
+            5 => 1,
+            1 => 1,
+        ]));
+
+        $this->route
+            ->expects(static::once())
             ->method('load')
-            ->willReturn(
-                new ProductReviewRouteResponse($reviewResult)
-            );
+            ->with($parentId, static::isInstanceOf(Request::class), $salesChannelContext, static::isInstanceOf(Criteria::class))
+            ->willReturn($reviewRouteResult)
+        ;
 
-        $result = $productReviewLoader->load($request, $salesChannelContext, $productId);
+        $this->eventDispatcher
+            ->expects(static::once())
+            ->method('dispatch')
+            ->with(static::isInstanceOf(ProductReviewsLoadedEvent::class))
+        ;
 
-        static::assertInstanceOf(ProductReviewEntity::class, $result->first());
-        static::assertSame($result->first()->getId(), $reviewId);
-        static::assertCount(1, $result);
+        $result = $this->productReviewLoader->load($request, $salesChannelContext);
+        $matrix = $result->getMatrix();
+
+        static::assertSame(6.0, $matrix->getPointSum());
+        static::assertSame(2, $matrix->getTotalReviewCount());
+
+        static::assertSame($productId, $result->getProductId());
+        static::assertSame($parentId, $result->getParentId());
         static::assertNull($result->getCustomerReview());
+
+        static::assertSame(2, $result->getTotal());
+        static::assertCount(2, $result->getElements());
+        static::assertArrayHasKey($review1->getId(), $result->getElements());
+        static::assertArrayHasKey($review2->getId(), $result->getElements());
     }
 
-    public function testItLoadsReviewsPagination(): void
+    public function testLoadWithCustomerAndLanguageFilter(): void
     {
-        $reviewId = Uuid::randomHex();
+        $request = new Request();
         $productId = Uuid::randomHex();
-        $request = new Request([], [], ['productId' => $productId, 'p' => 2]);
-        $salesChannelContext = $this->getSalesChannelContext(false);
-
-        $review = $this->getReviewEntity($reviewId);
-
-        $reviews = new ProductReviewCollection([
-            $review,
+        $request->request->add([
+            'productId' => $productId,
+            'language' => 'filter-language',
         ]);
 
-        $productReviewRouteMock = $this->createMock(ProductReviewRoute::class);
-        $productReviewLoader = $this->getProductReviewLoader($productReviewRouteMock);
-
-        $reviewResult = $this->getDefaultResult($reviews, $request, $salesChannelContext);
-
-        $criteria = $this->createCriteria($request, $salesChannelContext);
-
-        $productReviewRouteMock
-            ->method('load')
-            ->with($productId, $request, $salesChannelContext, $criteria)
-            ->willReturn(
-                new ProductReviewRouteResponse($reviewResult)
-            );
-
-        $result = $productReviewLoader->load($request, $salesChannelContext, $productId);
-
-        $firstResult = $result->first();
-        static::assertInstanceOf(ProductReviewEntity::class, $firstResult);
-        static::assertSame($firstResult->getId(), $reviewId);
-        static::assertSame($result->getCriteria()->getOffset(), 10);
-        static::assertCount(1, $result);
-        static::assertNull($result->getCustomerReview());
-    }
-
-    public function testNegativeOffsetDefaultsToZero(): void
-    {
-        $reviewId = Uuid::randomHex();
-        $productId = Uuid::randomHex();
-        $request = new Request([], [], ['productId' => $productId, 'p' => -2]);
-        $salesChannelContext = $this->getSalesChannelContext(false);
-
-        $review = $this->getReviewEntity($reviewId);
-
-        $reviews = new ProductReviewCollection([
-            $review,
-        ]);
-
-        $productReviewRouteMock = $this->createMock(ProductReviewRoute::class);
-        $productReviewLoader = $this->getProductReviewLoader($productReviewRouteMock);
-
-        $reviewResult = $this->getDefaultResult($reviews, $request, $salesChannelContext);
-
-        $criteria = $this->createCriteria($request, $salesChannelContext);
-
-        $productReviewRouteMock
-            ->method('load')
-            ->with($productId, $request, $salesChannelContext, $criteria)
-            ->willReturn(
-                new ProductReviewRouteResponse($reviewResult)
-            );
-
-        $result = $productReviewLoader->load($request, $salesChannelContext, $productId);
-
-        static::assertInstanceOf(ProductReviewEntity::class, $result->first());
-        static::assertSame($result->first()->getId(), $reviewId);
-        static::assertSame($result->getCriteria()->getOffset(), 0);
-        static::assertCount(1, $result);
-        static::assertNull($result->getCustomerReview());
-    }
-
-    public function testItLoadsReviewsWithParentId(): void
-    {
-        $reviewId = Uuid::randomHex();
-        $productId = Uuid::randomHex();
-        $request = new Request([], [], ['productId' => $productId, 'parentId' => $productId, 'sort' => 'points', 'language' => 'filter-language']);
-        $salesChannelContext = $this->getSalesChannelContext();
-
-        $review = $this->getReviewEntity($reviewId);
-
-        $reviews = new ProductReviewCollection([
-            $review,
-        ]);
-
-        $productReviewRouteMock = $this->createMock(ProductReviewRoute::class);
-        $productReviewLoader = $this->getProductReviewLoader($productReviewRouteMock);
-
-        $reviewResult = $this->getDefaultResult($reviews, $request, $salesChannelContext);
-
-        $productReviewRouteMock
-            ->method('load')
-            ->willReturn(
-                new ProductReviewRouteResponse($reviewResult)
-            );
-
-        $result = $productReviewLoader->load($request, $salesChannelContext, $productId);
-
-        static::assertInstanceOf(ProductReviewEntity::class, $result->first());
-        static::assertSame($reviewId, $result->first()->getId());
-        static::assertCount(1, $result);
-        static::assertEquals([new FieldSorting('points', 'DESC')], $result->getCriteria()->getSorting());
-        static::assertNotNull($result->getCustomerReview());
-    }
-
-    public function testItLoadsReviewsWithPointsFilter(): void
-    {
-        $reviewId = Uuid::randomHex();
-        $productId = Uuid::randomHex();
-        $request = new Request([], [], ['productId' => $productId, 'points' => ['4', 'gg']]);
-        $salesChannelContext = $this->getSalesChannelContext();
-
-        $review = $this->getReviewEntity($reviewId);
-
-        $reviews = new ProductReviewCollection([
-            $review,
-        ]);
-
-        $productReviewRouteMock = $this->createMock(ProductReviewRoute::class);
-        $productReviewLoader = $this->getProductReviewLoader($productReviewRouteMock);
-
-        $reviewResult = $this->getDefaultResult($reviews, $request, $salesChannelContext);
-
-        $productReviewRouteMock
-            ->method('load')
-            ->willReturn(
-                new ProductReviewRouteResponse($reviewResult)
-            );
-
-        $result = $productReviewLoader->load($request, $salesChannelContext, $productId);
-
-        static::assertInstanceOf(ProductReviewEntity::class, $result->first());
-        static::assertSame($result->first()->getId(), $reviewId);
-        static::assertCount(1, $result);
-    }
-
-    private function getReviewEntity(string $reviewId): ProductReviewEntity
-    {
+        /** @var MockObject&SalesChannelContext $salesChannelContext */
+        $salesChannelContext = $this->createMock(SalesChannelContext::class);
+        $context = Context::createDefaultContext();
         $customer = new CustomerEntity();
         $customer->setId(Uuid::randomHex());
+        $customer->setFirstName('Max');
+        $customer->setLastName('Mustermann');
+        $customer->setEmail('foo@example.com');
+        $salesChannel = new SalesChannelEntity();
+        $salesChannel->setId(Uuid::randomHex());
+
+        $salesChannelContext->expects(static::exactly(2))->method('getCustomer')->willReturn($customer);
+        $salesChannelContext->expects(static::once())->method('getContext')->willReturn($context);
+
+        $review = $this->createReview();
+        $reviewRouteResult = $this->createProductReviewRouteResponse([
+            $review->getId() => $review,
+        ]);
+
+        $customerReview = $this->createReview();
+        $customerReviewRouteResult = $this->createProductReviewRouteResponse([
+            $customerReview->getId() => $customerReview,
+        ]);
+
+        $this->route
+            ->expects(static::exactly(2))
+            ->method('load')
+            ->with($productId, static::isInstanceOf(Request::class), $salesChannelContext, static::isInstanceOf(Criteria::class))
+            ->will(static::onConsecutiveCalls($reviewRouteResult, $customerReviewRouteResult))
+        ;
+
+        $result = $this->productReviewLoader->load($request, $salesChannelContext);
+        static::assertSame($productId, $result->getProductId());
+        static::assertNull($result->getParentId());
+        static::assertSame($customerReview, $result->getCustomerReview());
+
+        static::assertSame(1, $result->getTotal());
+        static::assertCount(1, $result->getElements());
+        static::assertArrayHasKey($review->getId(), $result->getElements());
+    }
+
+    public function testCriteriaWithPointsAndInvalidSorting(): void
+    {
+        $request = new Request();
+        $productId = Uuid::randomHex();
+        $request->request->add([
+            'productId' => $productId,
+            'points' => [2, 3],
+            'sort' => 'invalidSorting',
+        ]);
+
+        /** @var MockObject&SalesChannelContext $salesChannelContext */
+        $salesChannelContext = $this->createMock(SalesChannelContext::class);
+        $salesChannel = new SalesChannelEntity();
+        $salesChannel->setId(Uuid::randomHex());
+
+        $salesChannelContext->expects(static::exactly(2))->method('getCustomer')->willReturn(null);
+
+        $review = $this->createReview();
+        $reviewRouteResult = $this->createProductReviewRouteResponse([
+            $review->getId() => $review,
+        ]);
+
+        $this->route
+            ->expects(static::once())
+            ->method('load')
+            ->with(
+                $productId,
+                static::isInstanceOf(Request::class),
+                $salesChannelContext,
+                static::callback(function (Criteria $criteria) {
+                    $postFilters = $criteria->getPostFilters();
+                    static::assertCount(1, $postFilters);
+
+                    $postFilter = reset($postFilters);
+                    static::assertInstanceOf(MultiFilter::class, $postFilter);
+                    static::assertCount(2, $postFilter->getFields());
+                    static::assertContains('points', $postFilter->getFields());
+
+                    /** @var MultiFilter $postFilter */
+                    $queries = $postFilter->getQueries();
+                    static::assertCount(2, $queries);
+
+                    foreach ($queries as $query) {
+                        static::assertInstanceOf(RangeFilter::class, $query);
+
+                        /** @var RangeFilter $query */
+                        static::assertTrue($query->hasParameter(RangeFilter::GTE));
+                        static::assertTrue($query->hasParameter(RangeFilter::LT));
+
+                        static::assertContains([
+                            (float) $query->getParameter(RangeFilter::GTE),
+                            (float) $query->getParameter(RangeFilter::LT),
+                        ], [[1.5, 2.5], [2.5, 3.5]]);
+                    }
+
+                    $sortings = $criteria->getSorting();
+                    static::assertCount(1, $sortings);
+
+                    $sorting = reset($sortings);
+                    static::assertInstanceOf(FieldSorting::class, $sorting);
+
+                    static::assertSame('createdAt', $sorting->getField());
+                    static::assertSame('DESC', $sorting->getDirection());
+
+                    return true;
+                })
+            )
+            ->willReturn($reviewRouteResult)
+        ;
+
+        $this->eventDispatcher
+            ->expects(static::once())
+            ->method('dispatch')
+            ->with(static::isInstanceOf(ProductReviewsLoadedEvent::class))
+        ;
+
+        $result = $this->productReviewLoader->load($request, $salesChannelContext);
+        static::assertSame($productId, $result->getProductId());
+        static::assertNull($result->getParentId());
+        static::assertNull($result->getCustomerReview());
+
+        static::assertSame(1, $result->getTotal());
+        static::assertCount(1, $result->getElements());
+        static::assertArrayHasKey($review->getId(), $result->getElements());
+    }
+
+    public function testCriteriaRequestParameters(): void
+    {
+        $request = new Request();
+        $productId = Uuid::randomHex();
+        $request->request->add([
+            'productId' => $productId,
+            'limit' => 7,
+            'p' => 3,
+            'sort' => 'points',
+        ]);
+
+        /** @var MockObject&SalesChannelContext $salesChannelContext */
+        $salesChannelContext = $this->createMock(SalesChannelContext::class);
+        $salesChannel = new SalesChannelEntity();
+        $salesChannel->setId(Uuid::randomHex());
+
+        $salesChannelContext->expects(static::exactly(2))->method('getCustomer')->willReturn(null);
+
+        $review = $this->createReview();
+        $reviewRouteResult = $this->createProductReviewRouteResponse([
+            $review->getId() => $review,
+        ]);
+
+        $this->route
+            ->expects(static::once())
+            ->method('load')
+            ->with(
+                $productId,
+                static::isInstanceOf(Request::class),
+                $salesChannelContext,
+                static::callback(function (Criteria $criteria) {
+                    $postFilters = $criteria->getPostFilters();
+                    static::assertCount(0, $postFilters);
+
+                    static::assertSame(7, $criteria->getLimit());
+                    static::assertSame(14, $criteria->getOffset()); // (3 - 1) * 7
+
+                    $sortings = $criteria->getSorting();
+                    static::assertCount(1, $sortings);
+
+                    $sorting = reset($sortings);
+                    static::assertInstanceOf(FieldSorting::class, $sorting);
+
+                    static::assertSame('points', $sorting->getField());
+                    static::assertSame('DESC', $sorting->getDirection());
+
+                    return true;
+                })
+            )
+            ->willReturn($reviewRouteResult)
+        ;
+
+        $this->eventDispatcher
+            ->expects(static::once())
+            ->method('dispatch')
+            ->with(static::isInstanceOf(ProductReviewsLoadedEvent::class))
+        ;
+
+        $result = $this->productReviewLoader->load($request, $salesChannelContext);
+        static::assertSame($productId, $result->getProductId());
+        static::assertNull($result->getParentId());
+        static::assertNull($result->getCustomerReview());
+
+        static::assertSame(1, $result->getTotal());
+        static::assertCount(1, $result->getElements());
+        static::assertArrayHasKey($review->getId(), $result->getElements());
+    }
+
+    private function createReview(): ProductReviewEntity
+    {
         $review = new ProductReviewEntity();
-        $review->setId($reviewId);
-        $review->setUniqueIdentifier($reviewId);
-        $review->setCustomer($customer);
+        $review->setId(Uuid::randomHex());
 
         return $review;
     }
 
-    private function getProductReviewLoader(
-        ProductReviewRoute $productReviewRouteMock
-    ): ProductReviewLoader {
-        return new ProductReviewLoader(
-            $productReviewRouteMock,
-            $this->systemConfigService,
-            $this->createMock(EventDispatcherInterface::class)
-        );
+    /**
+     * @param array<string, ProductReviewEntity> $reviews
+     */
+    private function createProductReviewRouteResponse(array $reviews, ?TermsResult $ratingMatrix = null): ProductReviewRouteResponse
+    {
+        $aggregationCollection = null;
+        if ($ratingMatrix !== null) {
+            $aggregationCollection = new AggregationResultCollection(['ratingMatrix' => $ratingMatrix]);
+        }
+
+        return new ProductReviewRouteResponse(new EntitySearchResult(
+            ProductReviewDefinition::ENTITY_NAME,
+            \count($reviews),
+            new ProductReviewCollection($reviews),
+            $aggregationCollection,
+            new Criteria(),
+            Context::createDefaultContext()
+        ));
     }
 
     /**
-     * @return EntitySearchResult<ProductReviewCollection>
+     * @param array<int, int> $points
      */
-    private function getDefaultResult(
-        ProductReviewCollection $reviews,
-        Request $request,
-        SalesChannelContext $salesChannelContext
-    ): EntitySearchResult {
-        $criteria = $this->createCriteria($request, $salesChannelContext);
-
-        return new EntitySearchResult(
-            ProductReviewDefinition::ENTITY_NAME,
-            1,
-            $reviews,
-            new AggregationResultCollection(
-                [
-                    'ratingMatrix' => new TermsResult('ratingMatrix', []),
-                ],
-            ),
-            $criteria,
-            Context::createDefaultContext()
-        );
-    }
-
-    private function getSalesChannelContext(bool $setCustomer = true): SalesChannelContext
+    private function createRatingPointsAggregation(array $points): TermsResult
     {
-        $salesChannelEntity = new SalesChannelEntity();
-        $salesChannelEntity->setId('salesChannelId');
-
-        $customer = null;
-
-        if ($setCustomer) {
-            $customer = new CustomerEntity();
-            $customer->setId(Uuid::randomHex());
+        $buckets = [];
+        foreach ($points as $rating => $count) {
+            $buckets[] = new Bucket((string) $rating, $count, null);
         }
 
-        return new SalesChannelContext(
-            Context::createDefaultContext(),
-            'foo',
-            'bar',
-            $salesChannelEntity,
-            new CurrencyEntity(),
-            new CustomerGroupEntity(),
-            new TaxCollection(),
-            new PaymentMethodEntity(),
-            new ShippingMethodEntity(),
-            new ShippingLocation(new CountryEntity(), null, null),
-            $customer,
-            new CashRoundingConfig(2, 0.01, true),
-            new CashRoundingConfig(2, 0.01, true),
-            []
-        );
-    }
-
-    private function createCriteria(Request $request, SalesChannelContext $context): Criteria
-    {
-        $limit = (int) $request->get('limit', $this->systemConfigService->getInt('core.listing.reviewsPerPage', $context->getSalesChannelId()));
-        $page = (int) $request->get('p', 1);
-        $offset = max(0, $limit * ($page - 1));
-
-        $criteria = new Criteria();
-        $criteria->setLimit($limit);
-        $criteria->setOffset($offset);
-        $criteria->setTotalCountMode(Criteria::TOTAL_COUNT_MODE_EXACT);
-
-        $sorting = new FieldSorting('createdAt', 'DESC');
-        if ($request->get('sort', 'createdAt') === 'points') {
-            $sorting = new FieldSorting('points', 'DESC');
-        }
-
-        $criteria->addSorting($sorting);
-
-        if ($request->get('language') === 'filter-language') {
-            $criteria->addPostFilter(
-                new EqualsFilter('languageId', $context->getContext()->getLanguageId())
-            );
-        } else {
-            $criteria->addAssociation('language.translationCode.code');
-        }
-
-        $reviewFilters[] = new EqualsFilter('status', true);
-
-        if ($context->getCustomer() !== null) {
-            $reviewFilters[] = new EqualsFilter('customerId', $context->getCustomer()->getId());
-        }
-
-        $criteria->addAggregation(
-            new FilterAggregation(
-                'customer-login-filter',
-                new TermsAggregation('ratingMatrix', 'points'),
-                [
-                    new MultiFilter(MultiFilter::CONNECTION_OR, $reviewFilters),
-                ]
-            ),
-            new FilterAggregation(
-                'language-filter',
-                new TermsAggregation('languageMatrix', 'languageId'),
-                [
-                    new EqualsFilter('languageId', $context->getContext()->getLanguageId()),
-                    new MultiFilter(MultiFilter::CONNECTION_OR, $reviewFilters),
-                ]
-            )
-        );
-
-        return $criteria;
+        return new TermsResult('ratingMatrix', $buckets);
     }
 }

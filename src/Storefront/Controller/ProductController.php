@@ -4,7 +4,6 @@ namespace Shopware\Storefront\Controller;
 
 use Shopware\Core\Content\Product\Aggregate\ProductReview\ProductReviewCollection;
 use Shopware\Core\Content\Product\Exception\ProductNotFoundException;
-use Shopware\Core\Content\Product\Exception\ReviewNotActiveExeption;
 use Shopware\Core\Content\Product\Exception\VariantNotFoundException;
 use Shopware\Core\Content\Product\SalesChannel\FindVariant\AbstractFindProductVariantRoute;
 use Shopware\Core\Content\Product\SalesChannel\Review\AbstractProductReviewLoader;
@@ -144,8 +143,11 @@ class ProductController extends StorefrontController
             'productId' => $productId,
             'success' => 1,
             'data' => $data,
-            'parentId' => $data->get('parentId'),
         ];
+
+        if ($data->get('parentId')) {
+            $forwardParams['parentId'] = $data->get('parentId');
+        }
 
         if ($data->has('id')) {
             $forwardParams['success'] = 2;
@@ -157,9 +159,7 @@ class ProductController extends StorefrontController
     #[Route(path: '/product/{productId}/reviews', name: 'frontend.product.reviews', defaults: ['XmlHttpRequest' => true], methods: ['GET', 'POST'])]
     public function loadReviews(string $productId, Request $request, SalesChannelContext $context): Response
     {
-        $this->checkReviewsActive($context);
-
-        $reviews = $this->productReviewLoader->load($request, $context, $productId, $request->get('parentId'));
+        $reviews = $this->productReviewLoader->load($request, $context);
 
         $this->hook(new ProductReviewsWidgetLoadedHook($reviews, $context));
 
@@ -191,17 +191,5 @@ class ProductController extends StorefrontController
             'reviews' => $reviews,
             'ratingSuccess' => $request->get('success'),
         ]);
-    }
-
-    /**
-     * @throws ReviewNotActiveExeption
-     */
-    private function checkReviewsActive(SalesChannelContext $context): void
-    {
-        $showReview = $this->systemConfigService->get('core.listing.showReview', $context->getSalesChannel()->getId());
-
-        if (!$showReview) {
-            throw StorefrontException::reviewNotActive();
-        }
     }
 }

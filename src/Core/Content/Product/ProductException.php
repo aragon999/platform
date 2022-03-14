@@ -3,8 +3,10 @@
 namespace Shopware\Core\Content\Product;
 
 use Shopware\Core\Content\Product\Exception\ReviewNotActiveExeption;
+use Shopware\Core\Framework\Feature;
 use Shopware\Core\Framework\HttpException;
 use Shopware\Core\Framework\Log\Package;
+use Shopware\Core\Framework\Routing\Exception\MissingRequestParameterException;
 use Shopware\Core\Framework\ShopwareHttpException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -18,6 +20,7 @@ class ProductException extends HttpException
     public const SORTING_NOT_FOUND = 'PRODUCT_SORTING_NOT_FOUND';
     public const PRODUCT_CONFIGURATION_OPTION_ALREADY_EXISTS = 'PRODUCT_CONFIGURATION_OPTION_EXISTS_ALREADY';
     public const PRODUCT_INVALID_OPTIONS_PARAMETER = 'PRODUCT_INVALID_OPTIONS_PARAMETER';
+    public const PRODUCT_MISSING_PRODUCT_ID_IN_REQUEST_CODE = 'PRODUCT__MISSING_PRODUCT_ID_IN_REQUEST';
 
     public static function invalidCheapestPriceFacade(string $id): self
     {
@@ -89,5 +92,19 @@ class ProductException extends HttpException
     public static function reviewNotActive(): ShopwareHttpException
     {
         return new ReviewNotActiveExeption();
+    }
+
+    public static function missingProductId(string $path = ''): HttpException
+    {
+        if (!Feature::isActive('v6.6.0.0')) {
+            return new MissingRequestParameterException('productId', $path);
+        }
+
+        return new self(
+            Response::HTTP_BAD_REQUEST,
+            self::PRODUCT_MISSING_PRODUCT_ID_IN_REQUEST_CODE,
+            'Parameter "productId" is missing.',
+            ['path' => $path]
+        );
     }
 }
