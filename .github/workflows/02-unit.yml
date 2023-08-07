@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - trunk
+      - ci/fix-gh-unit-tests
   pull_request:
 
 jobs:
