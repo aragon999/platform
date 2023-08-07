@@ -251,7 +251,7 @@ class MultilingualEsIndexer
             throw ElasticsearchIndexingException::definitionNotFound($entity);
         }
 
-        $data = $definition->fetch(Uuid::fromHexToBytesList($ids), $context);
+        $data = $definition->fetch($ids, $context);
 
         $toRemove = array_filter($ids, fn (string $id) => !isset($data[$id]));
 
