@@ -1,6 +1,7 @@
 import template from './sw-cms-page-form.html.twig';
 import './sw-cms-page-form.scss';
 import CMS from '../../constant/sw-cms.constant';
+const { cloneDeep } = Shopware.Utils.object;
 
 /**
  * @private
@@ -15,6 +16,11 @@ export default {
         page: {
             type: Object,
             required: true,
+        },
+        elementConfig: {
+            type: Object,
+            required: false,
+            default: null,
         },
         elementUpdate: {
             type: Function,
@@ -73,6 +79,53 @@ export default {
             }
 
             return '';
+        },
+
+        getElementConfig(cmsElement) {
+            if (!this.elementConfig.hasOwnProperty(cmsElement.id)) {
+                this.elementConfig[cmsElement.id] = {};
+            }
+
+            return new Proxy(this.elementConfig[cmsElement.id], {
+                get(target, prop) {
+                    if (target.hasOwnProperty(prop)) {
+                        return target[prop];
+                    }
+
+                    return cmsElement[prop];
+                },
+                set(target, prop, value) {
+                    target[prop] = value;
+
+                    return true
+                },
+            });
+        },
+
+        isInherited(block) {
+            console.log('Inherited Check', block, this.elementConfig);
+            for (let element of block.slots) {
+                if (this.elementConfig.hasOwnProperty(element.id)) {
+                    return false;
+                }
+            }
+
+            return true;
+        },
+
+        restoreBlockInheritance(block) {
+            console.log('Restore Inheritance before', block.slots, this.elementConfig);
+
+            for (let element of block.slots) {
+                console.log('Restore Inheritance', element.config);
+                this.$set(this.elementConfig, element.id, {config: cloneDeep(element.config) || {}});
+            }
+        },
+
+        removeBlockInheritance(block) {
+            for (let element of block.slots) {
+                this.$delete(this.elementConfig, element.id);
+            }
         },
 
         displaySectionType(block) {

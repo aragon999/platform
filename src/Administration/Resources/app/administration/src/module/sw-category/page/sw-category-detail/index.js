@@ -397,21 +397,6 @@ export default {
                     return null;
                 }
 
-                if (this.category.slotConfig !== null) {
-                    cmsPage.sections.forEach((section) => {
-                        section.blocks.forEach((block) => {
-                            block.slots.forEach((slot) => {
-                                if (this.category.slotConfig[slot.id]) {
-                                    if (slot.config === null) {
-                                        slot.config = {};
-                                    }
-                                    merge(slot.config, cloneDeep(this.category.slotConfig[slot.id]));
-                                }
-                            });
-                        });
-                    });
-                }
-
                 this.updateCmsPageDataMapping();
                 Shopware.State.commit('cmsPageState/setCurrentPage', cmsPage);
 
@@ -779,6 +764,8 @@ export default {
 
             const { changes } = this.changesetGenerator.generate(this.cmsPage);
 
+            console.log(changes);
+
             const slotOverrides = {};
             if (changes === null) {
                 return slotOverrides;
@@ -788,6 +775,11 @@ export default {
                 changes.sections.forEach((section) => {
                     if (type.isArray(section.blocks)) {
                         section.blocks.forEach((block) => {
+                            if (block['isInherited']) {
+                                console.log(`${block.id} is inherited`);
+                                return;
+                            }
+
                             if (type.isArray(block.slots)) {
                                 block.slots.forEach((slot) => {
                                     slotOverrides[slot.id] = slot.config;
@@ -797,6 +789,8 @@ export default {
                     }
                 });
             }
+
+            console.log(slotOverrides);
 
             return slotOverrides;
         },
@@ -812,11 +806,14 @@ export default {
                 }
 
                 section.blocks.forEach((block) => {
+                    // console.log(block)
                     if (!block.slots) {
                         return;
                     }
 
                     block.slots.forEach((slot) => {
+                        console.log(slot, slot.type, slot.data, block.id);
+
                         if (!slot.config) {
                             return;
                         }

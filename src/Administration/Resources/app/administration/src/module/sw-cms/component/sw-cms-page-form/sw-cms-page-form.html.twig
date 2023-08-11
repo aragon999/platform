@@ -121,6 +121,13 @@
                     :title="$tc(getBlockTitle(block))"
                 >
                     <template #header-right>
+                        <sw-inheritance-switch
+                            :is-inherited="isInherited(block)"
+                            class="sw-inherit-wrapper__inheritance-icon"
+                            @inheritance-restore="restoreBlockInheritance(block)"
+                            @inheritance-remove="removeBlockInheritance(block)"
+                        />
+
                         <div class="sw-cms-page-form__block-device-actions">
                             <sw-icon :name="getDeviceActive('mobile', section, block)" />
 
@@ -148,7 +155,7 @@
                         {% block sw_cms_page_form_element_config %}
                         <component
                             :is="cmsElements[element.type].configComponent"
-                            :element="element"
+                            :element="getElementConfig(element)"
                             @element-update="elementUpdate"
                         />
                         {% endblock %}
