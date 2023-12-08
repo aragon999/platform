@@ -8,6 +8,7 @@ use Shopware\Core\Checkout\Customer\CustomerEntity;
 use Shopware\Core\Checkout\Order\Aggregate\OrderLineItem\OrderLineItemCollection;
 use Shopware\Core\Content\Product\Aggregate\ProductVisibility\ProductVisibilityDefinition;
 use Shopware\Core\Defaults;
+use Shopware\Core\DevOps\Environment\EnvironmentHelper;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
@@ -68,7 +69,7 @@ class AccountOrderControllerTest extends TestCase
         $criteria
             ->addFilter(new EqualsFilter('typeId', Defaults::SALES_CHANNEL_TYPE_STOREFRONT))
             ->addFilter(new EqualsFilter('active', true))
-            ->addFilter(new EqualsFilter('domains.url', $_SERVER['APP_URL']));
+            ->addFilter(new EqualsFilter('domains.url', EnvironmentHelper::getVariable('APP_URL')));
 
         $salesChannel = $this->salesChannelRepository->search($criteria, $context)->getEntities()->first();
 
@@ -100,7 +101,7 @@ class AccountOrderControllerTest extends TestCase
             true
         );
 
-        $browser->request('GET', $_SERVER['APP_URL'] . '/widgets/account/order/detail/' . $orderId);
+        $browser->request('GET', EnvironmentHelper::getVariable('APP_URL') . '/widgets/account/order/detail/' . $orderId);
 
         $eventDispatcher = $this->getContainer()->get('event_dispatcher');
         $eventDispatcher->addListener(OrderRouteRequestEvent::class, static function (OrderRouteRequestEvent $event): void {
@@ -124,7 +125,7 @@ class AccountOrderControllerTest extends TestCase
             true
         );
 
-        $browser->request('GET', $_SERVER['APP_URL'] . '/widgets/account/order/detail/' . $orderId);
+        $browser->request('GET', EnvironmentHelper::getVariable('APP_URL') . '/widgets/account/order/detail/' . $orderId);
     }
 
     public function testGuestCustomerGetsRedirectedToAuth(): void
@@ -170,11 +171,11 @@ class AccountOrderControllerTest extends TestCase
             true
         );
 
-        $browser->request('GET', $_SERVER['APP_URL'] . '/account/order/' . $orderData[0]['deepLinkCode']);
+        $browser->request('GET', EnvironmentHelper::getVariable('APP_URL') . '/account/order/' . $orderData[0]['deepLinkCode']);
 
         $browser->request(
             'POST',
-            $_SERVER['APP_URL'] . '/account/order/' . $orderData[0]['deepLinkCode'],
+            EnvironmentHelper::getVariable('APP_URL') . '/account/order/' . $orderData[0]['deepLinkCode'],
             $this->tokenize('frontend.account.login', [
                 'email' => $customer->getEmail(),
                 'zipcode' => $orderData[0]['orderCustomer']['customer']['addresses'][0]['zipcode'],
@@ -259,7 +260,7 @@ class AccountOrderControllerTest extends TestCase
         // Load home page to verify the saleschannel got a different shipping method from the ordered one
         $browser->request(
             'GET',
-            $_SERVER['APP_URL'] . '/'
+            EnvironmentHelper::getVariable('APP_URL') . '/'
         );
 
         $this->addEventListener(
@@ -287,7 +288,7 @@ class AccountOrderControllerTest extends TestCase
 
         $browser->request(
             'GET',
-            '/account/order'
+            EnvironmentHelper::getVariable('APP_URL') . '/account/order'
         );
         $response = $browser->getResponse();
 
@@ -315,7 +316,7 @@ class AccountOrderControllerTest extends TestCase
 
         $browser->request(
             'GET',
-            '/account/order/' . $orderData[0]['deepLinkCode']
+            EnvironmentHelper::getVariable('APP_URL') . '/account/order/' . $orderData[0]['deepLinkCode']
         );
         $response = $browser->getResponse();
 
@@ -352,7 +353,7 @@ class AccountOrderControllerTest extends TestCase
         $browser = $this->login($customer->getEmail());
         $browser->request(
             'GET',
-            '/widgets/account/order/detail/' . $orderData[0]['id']
+            EnvironmentHelper::getVariable('APP_URL') . '/widgets/account/order/detail/' . $orderData[0]['id']
         );
         $response = $browser->getResponse();
 
@@ -387,7 +388,7 @@ class AccountOrderControllerTest extends TestCase
         $orderRepo->create($orderData, $context);
 
         $browser = $this->login($customer->getEmail());
-        $url = '/account/order/edit/' . $orderData[0]['id'];
+        $url = EnvironmentHelper::getVariable('APP_URL') . '/account/order/edit/' . $orderData[0]['id'];
 
         $browser->request(
             'GET',
@@ -407,7 +408,7 @@ class AccountOrderControllerTest extends TestCase
         $browser = KernelLifecycleManager::createBrowser($this->getKernel());
         $browser->request(
             'POST',
-            $_SERVER['APP_URL'] . '/account/login',
+            EnvironmentHelper::getVariable('APP_URL') . '/account/login',
             $this->tokenize('frontend.account.login', [
                 'username' => $email,
                 'password' => 'shopware',

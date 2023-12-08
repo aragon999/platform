@@ -83,11 +83,11 @@ class AuthControllerTest extends TestCase
 
         $sessionId = $session->getId();
 
-        $browser->request('GET', '/account/logout', []);
+        $browser->request('GET', EnvironmentHelper::getVariable('APP_URL') . '/account/logout', []);
         $response = $browser->getResponse();
         static::assertSame(302, $response->getStatusCode(), (string) $response->getContent());
 
-        $browser->request('GET', '/', []);
+        $browser->request('GET', EnvironmentHelper::getVariable('APP_URL') . '/', []);
         $response = $browser->getResponse();
         static::assertSame(200, $response->getStatusCode(), (string) $response->getContent());
 
@@ -120,13 +120,13 @@ class AuthControllerTest extends TestCase
 
         $session->set(PlatformRequest::ATTRIBUTE_SALES_CHANNEL_ID, TestDefaults::SALES_CHANNEL);
 
-        $browser->request('GET', '/account');
+        $browser->request('GET', EnvironmentHelper::getVariable('APP_URL') . '/account');
 
         /** @var RedirectResponse $redirectResponse */
         $redirectResponse = $browser->getResponse();
 
         static::assertInstanceOf(RedirectResponse::class, $redirectResponse);
-        static::assertStringStartsWith('/account/login', $redirectResponse->getTargetUrl());
+        static::assertStringContainsString('/account/login', $redirectResponse->getTargetUrl());
         static::assertNotEquals($contextToken, $this->getSession()->get('sw-context-token'));
     }
 
@@ -145,7 +145,7 @@ class AuthControllerTest extends TestCase
 
         $session->set(PlatformRequest::ATTRIBUTE_SALES_CHANNEL_ID, TestDefaults::SALES_CHANNEL);
 
-        $browser->request('GET', '/account');
+        $browser->request('GET', EnvironmentHelper::getVariable('APP_URL') . '/account');
 
         static::assertEquals($contextToken, $this->getSession()->get('sw-context-token'));
     }
@@ -160,11 +160,11 @@ class AuthControllerTest extends TestCase
         $sessionCookie = $browser->getCookieJar()->get('session-');
         static::assertNotNull($sessionCookie);
 
-        $browser->request('GET', '/account/logout', []);
+        $browser->request('GET', EnvironmentHelper::getVariable('APP_URL') . '/account/logout', []);
         $response = $browser->getResponse();
         static::assertSame(302, $response->getStatusCode(), (string) $response->getContent());
 
-        $browser->request('GET', '/', []);
+        $browser->request('GET', EnvironmentHelper::getVariable('APP_URL') . '/', []);
         $response = $browser->getResponse();
         static::assertSame(200, $response->getStatusCode(), (string) $response->getContent());
         $session = $this->getSession();
@@ -195,12 +195,12 @@ class AuthControllerTest extends TestCase
     {
         $browser = $this->login();
 
-        $browser->request('GET', '/account/login', []);
+        $browser->request('GET', EnvironmentHelper::getVariable('APP_URL') . '/account/login', []);
         $response = $browser->getResponse();
 
         static::assertSame(302, $response->getStatusCode(), (string) $response->getContent());
         static::assertInstanceOf(RedirectResponse::class, $response);
-        static::assertSame('/account', $response->getTargetUrl());
+        static::assertStringEndsWith('/account', $response->getTargetUrl());
     }
 
     public function testSessionIsMigratedOnLogOut(): void
@@ -211,11 +211,11 @@ class AuthControllerTest extends TestCase
         $contextToken = $session->get('sw-context-token');
         $sessionId = $session->getId();
 
-        $browser->request('GET', '/account/logout');
+        $browser->request('GET', EnvironmentHelper::getVariable('APP_URL') . '/account/logout');
         $response = $browser->getResponse();
         static::assertSame(302, $response->getStatusCode(), (string) $response->getContent());
 
-        $browser->request('GET', '/');
+        $browser->request('GET', EnvironmentHelper::getVariable('APP_URL') . '/');
         $response = $browser->getResponse();
         static::assertSame(200, $response->getStatusCode(), (string) $response->getContent());
 
@@ -239,12 +239,12 @@ class AuthControllerTest extends TestCase
         $firstTimeLoginSessionId = $firstTimeLogin->getId();
         $firstTimeLoginContextToken = $firstTimeLogin->get(PlatformRequest::HEADER_CONTEXT_TOKEN);
 
-        $browser->request('GET', '/account/logout', []);
+        $browser->request('GET', EnvironmentHelper::getVariable('APP_URL') . '/account/logout', []);
 
         $response = $browser->getResponse();
         static::assertSame(302, $response->getStatusCode(), (string) $response->getContent());
 
-        $browser->request('GET', '/', []);
+        $browser->request('GET', EnvironmentHelper::getVariable('APP_URL') . '/', []);
         $response = $browser->getResponse();
         static::assertSame(200, $response->getStatusCode(), (string) $response->getContent());
 
