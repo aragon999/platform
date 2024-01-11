@@ -8,5 +8,7 @@ use Shopware\Core\Framework\Log\Package;
 #[IsFlowEventAware]
 interface SalesChannelAware
 {
+    public const SALES_CHANNEL_ID = 'salesChannelId';
+
     public function getSalesChannelId(): string;
 }

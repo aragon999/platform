@@ -11,6 +11,7 @@ use Shopware\Core\Framework\Event\EventData\MailRecipientStruct;
 use Shopware\Core\Framework\Event\FlowEventAware;
 use Shopware\Core\Framework\Event\MailAware;
 use Shopware\Core\Framework\Event\OrderAware;
+use Shopware\Core\Framework\Event\SalesChannelAware;
 use Shopware\Core\Framework\Log\Package;
 
 #[Package('services-settings')]
@@ -41,11 +42,7 @@ class MailStorer extends FlowStorer
             }
         }
 
-        if (isset($stored[MailAware::SALES_CHANNEL_ID])) {
-            return $stored;
-        }
-
-        $stored[MailAware::SALES_CHANNEL_ID] = $event->getSalesChannelId();
+        $stored[SalesChannelAware::SALES_CHANNEL_ID] ??= $event->getSalesChannelId();
 
         return $stored;
     }
@@ -77,7 +74,7 @@ class MailStorer extends FlowStorer
         $mailStruct->setBcc($mailStructData['bcc'] ?? null);
         $mailStruct->setCc($mailStructData['cc'] ?? null);
 
-        $storable->setData(MailAware::SALES_CHANNEL_ID, $storable->getStore(MailAware::SALES_CHANNEL_ID));
+        $storable->setData(SalesChannelAware::SALES_CHANNEL_ID, $storable->getStore(SalesChannelAware::SALES_CHANNEL_ID));
         $storable->setData(MailAware::MAIL_STRUCT, $mailStruct);
     }
 
@@ -94,7 +91,7 @@ class MailStorer extends FlowStorer
             return;
         }
 
-        $storable->setData(MailAware::SALES_CHANNEL_ID, $order->getSalesChannelId());
+        $storable->setData(SalesChannelAware::SALES_CHANNEL_ID, $order->getSalesChannelId());
         $mailStruct = new MailRecipientStruct([$customer->getEmail() => $customer->getFirstName() . $customer->getLastName()]);
         $storable->setData(MailAware::MAIL_STRUCT, $mailStruct);
     }
@@ -107,7 +104,7 @@ class MailStorer extends FlowStorer
             return;
         }
 
-        $storable->setData(MailAware::SALES_CHANNEL_ID, $customer->getSalesChannelId());
+        $storable->setData(SalesChannelAware::SALES_CHANNEL_ID, $customer->getSalesChannelId());
         $mailStruct = new MailRecipientStruct([$customer->getEmail() => $customer->getFirstName() . $customer->getLastName()]);
         $storable->setData(MailAware::MAIL_STRUCT, $mailStruct);
     }

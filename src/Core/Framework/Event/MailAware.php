@@ -7,13 +7,9 @@ use Shopware\Core\Framework\Log\Package;
 
 #[Package('services-settings')]
 #[IsFlowEventAware]
-interface MailAware
+interface MailAware extends SalesChannelAware
 {
     public const MAIL_STRUCT = 'mailStruct';
 
-    public const SALES_CHANNEL_ID = 'salesChannelId';
-
     public function getMailStruct(): MailRecipientStruct;
-
-    public function getSalesChannelId(): ?string;
 }

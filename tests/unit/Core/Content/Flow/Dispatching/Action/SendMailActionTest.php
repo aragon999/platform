@@ -29,6 +29,7 @@ use Shopware\Core\Framework\Event\LanguageAware;
 use Shopware\Core\Framework\Event\MailAware;
 use Shopware\Core\Framework\Event\OrderAware;
 use Shopware\Core\Framework\Log\Package;
+use Shopware\Core\Framework\Event\SalesChannelAware;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\System\Locale\LanguageLocaleCodeProvider;
 use Shopware\Core\Test\TestDefaults;
@@ -161,20 +162,17 @@ class SendMailActionTest extends TestCase
 
         $templateData = new MailRecipientStruct($expected['data']['recipients']);
 
-        $flow = new StorableFlow(
-            '',
-            $expected['context'],
-            []
-        );
         $state = new FlowState();
         $state->currentSequence = new Sequence();
         $state->currentSequence->sequenceId = Uuid::randomHex();
         $state->currentSequence->flowId = Uuid::randomHex();
         $state->flowId = $state->currentSequence->flowId;
-        $flow->setFlowState($state);
-        $flow->setData(MailAware::MAIL_STRUCT, $templateData);
-        $flow->setData(MailAware::SALES_CHANNEL_ID, TestDefaults::SALES_CHANNEL);
 
+        $flow = new StorableFlow('', $expected['context'], [], [
+            MailAware::MAIL_STRUCT => $templateData,
+            SalesChannelAware::SALES_CHANNEL_ID => TestDefaults::SALES_CHANNEL,
+        ]);
+        $flow->setFlowState($state);
         $flow->setConfig($config);
 
         $this->entitySearchResult->expects(static::once())
@@ -291,19 +289,20 @@ class SendMailActionTest extends TestCase
                         'email' => 'firstName lastName',
                     ],
                 ],
-                MailAware::SALES_CHANNEL_ID => TestDefaults::SALES_CHANNEL,
+                SalesChannelAware::SALES_CHANNEL_ID => TestDefaults::SALES_CHANNEL,
                 OrderAware::ORDER_ID => $orderId,
+            ],
+            [
+                MailAware::MAIL_STRUCT => $templateData,
+                SalesChannelAware::SALES_CHANNEL_ID => TestDefaults::SALES_CHANNEL,
+                OrderAware::ORDER_ID => $orderId,
+                FlowMailVariables::CONTACT_FORM_DATA => [
+                    'email' => 'customer@example.com',
+                    'firstName' => 'Max',
+                    'lastName' => 'Mustermann',
+                ],
             ]
         );
-        $flow->setData(MailAware::MAIL_STRUCT, $templateData);
-        $flow->setData(MailAware::SALES_CHANNEL_ID, TestDefaults::SALES_CHANNEL);
-        $flow->setData(OrderAware::ORDER_ID, $orderId);
-        $flow->setData(FlowMailVariables::CONTACT_FORM_DATA, [
-            'email' => 'customer@example.com',
-            'firstName' => 'Max',
-            'lastName' => 'Mustermann',
-        ]);
-
         $flow->setConfig($config);
 
         $this->entitySearchResult->expects(static::once())
@@ -464,19 +463,21 @@ class SendMailActionTest extends TestCase
                         'email' => 'firstName lastName',
                     ],
                 ],
-                MailAware::SALES_CHANNEL_ID => TestDefaults::SALES_CHANNEL,
+                SalesChannelAware::SALES_CHANNEL_ID => TestDefaults::SALES_CHANNEL,
                 OrderAware::ORDER_ID => $orderId,
+            ],
+            [
+                MailAware::MAIL_STRUCT => $templateData,
+                SalesChannelAware::SALES_CHANNEL_ID => TestDefaults::SALES_CHANNEL,
+                LanguageAware::LANGUAGE_ID => $languageId,
+                OrderAware::ORDER_ID => $orderId,
+                FlowMailVariables::CONTACT_FORM_DATA => [
+                    'email' => 'customer@example.com',
+                    'firstName' => 'Max',
+                    'lastName' => 'Mustermann',
+                ],
             ]
         );
-        $flow->setData(MailAware::MAIL_STRUCT, $templateData);
-        $flow->setData(MailAware::SALES_CHANNEL_ID, TestDefaults::SALES_CHANNEL);
-        $flow->setData(OrderAware::ORDER_ID, $orderId);
-        $flow->setData(LanguageAware::LANGUAGE_ID, $languageId);
-        $flow->setData(FlowMailVariables::CONTACT_FORM_DATA, [
-            'email' => 'customer@example.com',
-            'firstName' => 'Max',
-            'lastName' => 'Mustermann',
-        ]);
 
         $flow->setConfig($config);
 

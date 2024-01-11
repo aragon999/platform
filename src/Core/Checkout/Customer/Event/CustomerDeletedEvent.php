@@ -54,9 +54,9 @@ class CustomerDeletedEvent extends Event implements ShopwareSalesChannelEvent, M
         return $this->salesChannelContext->getContext();
     }
 
-    public function getSalesChannelId(): ?string
+    public function getSalesChannelId(): string
     {
-        return $this->salesChannelContext->getSalesChannel()->getId();
+        return $this->salesChannelContext->getSalesChannelId();
     }
 
     public function getMailStruct(): MailRecipientStruct

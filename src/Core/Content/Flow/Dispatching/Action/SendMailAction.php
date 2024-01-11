@@ -22,6 +22,7 @@ use Shopware\Core\Framework\Event\EventData\MailRecipientStruct;
 use Shopware\Core\Framework\Event\LanguageAware;
 use Shopware\Core\Framework\Event\MailAware;
 use Shopware\Core\Framework\Event\OrderAware;
+use Shopware\Core\Framework\Event\SalesChannelAware;
 use Shopware\Core\Framework\Log\Package;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\Framework\Validation\DataBag\DataBag;
@@ -86,7 +87,7 @@ class SendMailAction extends FlowAction implements DelayableAction
             return;
         }
 
-        if (!$flow->hasData(MailAware::MAIL_STRUCT) || !$flow->hasData(MailAware::SALES_CHANNEL_ID)) {
+        if (!$flow->hasData(MailAware::MAIL_STRUCT) || !$flow->hasData(SalesChannelAware::SALES_CHANNEL_ID)) {
             throw new MailEventConfigurationException('Not have data from MailAware', $flow::class);
         }
 
@@ -105,7 +106,8 @@ class SendMailAction extends FlowAction implements DelayableAction
             return;
         }
 
-        $injectedTranslator = $this->injectTranslator($flow->getContext(), $flow->getData(MailAware::SALES_CHANNEL_ID));
+        $salesChannelId = $flow->getData(SalesChannelAware::SALES_CHANNEL_ID);
+        $injectedTranslator = $this->injectTranslator($flow->getContext(), $salesChannelId);
 
         $data = new DataBag();
 
@@ -124,9 +126,8 @@ class SendMailAction extends FlowAction implements DelayableAction
 
         $data->set('recipients', $recipients);
         $data->set('senderName', $mailTemplate->getTranslation('senderName'));
-        $data->set('salesChannelId', $flow->getData(MailAware::SALES_CHANNEL_ID));
+        $data->set('salesChannelId', $salesChannelId);
         $data->set('languageId', $flow->getData(LanguageAware::LANGUAGE_ID));
-
         $data->set('templateId', $mailTemplate->getId());
         $data->set('customFields', $mailTemplate->getCustomFields());
         $data->set('contentHtml', $mailTemplate->getTranslation('contentHtml'));

@@ -79,7 +79,7 @@ class UserRecoveryRequestEvent extends Event implements UserAware, MailAware, Sc
         return $this->mailRecipientStruct;
     }
 
-    public function getSalesChannelId(): ?string
+    public function getSalesChannelId(): string
     {
         return null;
     }

@@ -17,6 +17,7 @@ use Shopware\Core\Framework\Event\EventData\MailRecipientStruct;
 use Shopware\Core\Framework\Event\MailAware;
 use Shopware\Core\Framework\Event\OrderAware;
 use Shopware\Core\Framework\Log\Package;
+use Shopware\Core\Framework\Event\SalesChannelAware;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\Test\Stub\Flow\DummyEvent;
 use Shopware\Core\Test\TestDefaults;
@@ -41,7 +42,7 @@ class MailStorerTest extends TestCase
         $stored = [];
         $stored = $this->storer->store($event, $stored);
         static::assertArrayHasKey(MailAware::MAIL_STRUCT, $stored);
-        static::assertArrayHasKey(MailAware::SALES_CHANNEL_ID, $stored);
+        static::assertArrayHasKey(SalesChannelAware::SALES_CHANNEL_ID, $stored);
     }
 
     public function testStoreWithNotAware(): void
@@ -50,7 +51,7 @@ class MailStorerTest extends TestCase
         $stored = [];
         $stored = $this->storer->store($event, $stored);
         static::assertArrayNotHasKey(MailAware::MAIL_STRUCT, $stored);
-        static::assertArrayNotHasKey(MailAware::SALES_CHANNEL_ID, $stored);
+        static::assertArrayNotHasKey(SalesChannelAware::SALES_CHANNEL_ID, $stored);
     }
 
     public function testRestoreHasStored(): void
@@ -134,7 +135,7 @@ class MailEvent extends DummyEvent implements MailAware
         return $this->recipients;
     }
 
-    public function getSalesChannelId(): ?string
+    public function getSalesChannelId(): string
     {
         return TestDefaults::SALES_CHANNEL;
     }
