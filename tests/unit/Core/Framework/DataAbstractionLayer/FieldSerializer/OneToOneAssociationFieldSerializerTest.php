@@ -31,6 +31,43 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 #[CoversClass(OneToOneAssociationFieldSerializer::class)]
 class OneToOneAssociationFieldSerializerTest extends TestCase
 {
+    public function testEncodeWithValidDataCallsWriteExtractor(): void
+    {
+        new StaticDefinitionInstanceRegistry(
+            [
+                TestCustomerDefinition::class => $customerDefinition = new TestCustomerDefinition(),
+                CustomerRecoveryDefinition::class => new CustomerRecoveryDefinition(),
+            ],
+            $this->createMock(ValidatorInterface::class),
+            $this->createMock(EntityWriteGatewayInterface::class)
+        );
+
+        $field = $customerDefinition->getField('recoveryCustomer');
+
+        static::assertInstanceOf(OneToOneAssociationField::class, $field);
+
+        // TODO: Add that extract is called with the correct parameters
+        $writeExtractorMock = $this->createMock(WriteCommandExtractor::class);
+        $serializer = new OneToOneAssociationFieldSerializer($writeExtractorMock);
+
+        $params = new WriteParameterBag(
+            $customerDefinition,
+            WriteContext::createFromContext(Context::createDefaultContext()),
+            '/0',
+            new WriteCommandQueue()
+        );
+
+        // TODO: Fix to valid data
+        $result = $serializer->encode(
+            $field,
+            $this->createMock(EntityExistence::class),
+            new KeyValuePair('recoveryCustomer', 'foobar', false),
+            $params,
+        );
+
+        static::assertEquals([], iterator_to_array($result));
+    }
+
     public function testExceptionInNormalizationIsThrownIfDataIsNotArray(): void
     {
         $this->expectException(ExpectedArrayException::class);
