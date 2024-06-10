@@ -11,6 +11,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Validation\EntityExists;
 use Shopware\Core\Framework\DataAbstractionLayer\Validation\EntityNotExists;
 use Shopware\Core\Framework\Event\EventData\MailRecipientStruct;
+use Shopware\Core\Framework\Feature;
 use Shopware\Core\Framework\Log\Package;
 use Shopware\Core\Framework\Plugin\Exception\DecorationPatternException;
 use Shopware\Core\Framework\Validation\DataBag\DataBag;
@@ -64,6 +65,12 @@ class ProductReviewSaveRoute extends AbstractProductReviewSaveRoute
         $data->set('customerId', $customer->getId());
         $data->set('productId', $productId);
 
+        if (!Feature::isActive('v6.7.0.0')) {
+            $data->set('name', $customer->getFirstName());
+            $data->set('lastName', $customer->getLastName());
+            $data->set('email', $customer->getEmail());
+        }
+
         $this->validate($data, $context->getContext());
 
         $review = [
@@ -87,12 +94,11 @@ class ProductReviewSaveRoute extends AbstractProductReviewSaveRoute
 
         $mail = $this->config->getString('core.basicInformation.email', $salesChannelId);
         $event = new ReviewFormEvent(
-            $context->getContext(),
-            $salesChannelId,
+            $context,
             new MailRecipientStruct([$mail => $mail]),
             $data,
             $productId,
-            $customer->getId()
+            $customer
         );
 
         $this->eventDispatcher->dispatch(

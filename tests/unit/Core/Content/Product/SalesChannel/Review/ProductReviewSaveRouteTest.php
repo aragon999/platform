@@ -64,9 +64,6 @@ class ProductReviewSaveRouteTest extends TestCase
             'title' => 'foo',
             'content' => 'bar',
             'points' => 3,
-            'name' => 'Should be overwritten by customer name',
-            'lastName' => 'Should be overwritten by customer name',
-            'email' => 'Should be overwritten by customer mail',
         ]);
 
         $salesChannelContext = $this->createMock(SalesChannelContext::class);
@@ -80,7 +77,7 @@ class ProductReviewSaveRouteTest extends TestCase
 
         $salesChannelContext->expects(static::once())->method('getCustomer')->willReturn($customer);
         $salesChannelContext->expects(static::once())->method('getSalesChannelId')->willReturn($salesChannelId);
-        $salesChannelContext->expects(static::exactly(4))->method('getContext')->willReturn($context);
+        $salesChannelContext->expects(static::exactly(3))->method('getContext')->willReturn($context);
 
         $this->validator->expects(static::once())->method('getViolations')->willReturn(new ConstraintViolationList());
 
@@ -104,22 +101,18 @@ class ProductReviewSaveRouteTest extends TestCase
             ], $context);
 
         $event = new ReviewFormEvent(
-            $context,
-            $salesChannelId,
+            $salesChannelContext,
             new MailRecipientStruct(['noreply@example.com' => 'noreply@example.com']),
             new RequestDataBag([
                 'title' => 'foo',
                 'content' => 'bar',
                 'points' => 3,
-                'name' => $customer->getFirstName(),
-                'lastName' => $customer->getLastName(),
-                'email' => $customer->getEmail(),
                 'customerId' => $customer->getId(),
                 'productId' => $productId,
                 'id' => $id,
             ]),
             $productId,
-            $customer->getId()
+            $customer
         );
 
         $this->eventDispatcher

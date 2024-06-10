@@ -2,6 +2,7 @@
 
 namespace Shopware\Core\Content\Product\SalesChannel\Review\Event;
 
+use Shopware\Core\Checkout\Customer\CustomerEntity;
 use Shopware\Core\Content\Flow\Dispatching\Action\FlowMailVariables;
 use Shopware\Core\Content\Flow\Dispatching\Aware\ScalarValuesAware;
 use Shopware\Core\Content\Product\ProductDefinition;
@@ -15,12 +16,14 @@ use Shopware\Core\Framework\Event\FlowEventAware;
 use Shopware\Core\Framework\Event\MailAware;
 use Shopware\Core\Framework\Event\ProductAware;
 use Shopware\Core\Framework\Event\SalesChannelAware;
+use Shopware\Core\Framework\Event\ShopwareSalesChannelEvent;
 use Shopware\Core\Framework\Log\Package;
 use Shopware\Core\Framework\Validation\DataBag\DataBag;
+use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Symfony\Contracts\EventDispatcher\Event;
 
 #[Package('content')]
-final class ReviewFormEvent extends Event implements SalesChannelAware, MailAware, ProductAware, CustomerAware, ScalarValuesAware, FlowEventAware
+final class ReviewFormEvent extends Event implements ShopwareSalesChannelEvent, SalesChannelAware, MailAware, ProductAware, CustomerAware, ScalarValuesAware, FlowEventAware
 {
     public const EVENT_NAME = 'review_form.send';
 
@@ -30,12 +33,11 @@ final class ReviewFormEvent extends Event implements SalesChannelAware, MailAwar
     private readonly array $reviewFormData;
 
     public function __construct(
-        private readonly Context $context,
-        private readonly string $salesChannelId,
+        private readonly SalesChannelContext $salesChannelContext,
         private readonly MailRecipientStruct $recipients,
         DataBag $reviewFormData,
         private readonly string $productId,
-        private readonly string $customerId
+        private readonly CustomerEntity $customer
     ) {
         $this->reviewFormData = $reviewFormData->all();
     }
@@ -60,9 +62,14 @@ final class ReviewFormEvent extends Event implements SalesChannelAware, MailAwar
         return self::EVENT_NAME;
     }
 
+    public function getSalesChannelContext(): SalesChannelContext
+    {
+        return $this->salesChannelContext;
+    }
+
     public function getContext(): Context
     {
-        return $this->context;
+        return $this->salesChannelContext->getContext();
     }
 
     public function getMailStruct(): MailRecipientStruct
@@ -72,7 +79,7 @@ final class ReviewFormEvent extends Event implements SalesChannelAware, MailAwar
 
     public function getSalesChannelId(): string
     {
-        return $this->salesChannelId;
+        return $this->salesChannelContext->getSalesChannelId();
     }
 
     /**
@@ -88,8 +95,13 @@ final class ReviewFormEvent extends Event implements SalesChannelAware, MailAwar
         return $this->productId;
     }
 
+    public function getCustomer(): CustomerEntity
+    {
+        return $this->customer;
+    }
+
     public function getCustomerId(): string
     {
-        return $this->customerId;
+        return $this->customer->getId();
     }
 }
