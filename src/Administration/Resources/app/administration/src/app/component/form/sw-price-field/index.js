@@ -416,13 +416,6 @@ Component.register('sw-price-field', {
             return value * this.currency.factor;
         },
 
-        keymonitor(event) {
-            if (event.key === ',') {
-                const value = event.target.value;
-                event.target.value = value.replace(/,/, '.');
-            }
-        },
-
         onCloseModal() {
             this.showModal = false;
         },
