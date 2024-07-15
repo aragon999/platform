@@ -182,6 +182,7 @@ Component.register('sw-price-field', {
 
         priceForCurrency: {
             get() {
+                console.log('get price for currency');
                 const priceForCurrency = Object.values(this.value).find((price) => {
                     return price.currencyId === this.currency?.id;
                 });
@@ -308,6 +309,7 @@ Component.register('sw-price-field', {
         },
 
         onPriceGrossInputChange(value) {
+            console.log(`gross input-change: ${value}`);
             if (this.priceForCurrency.linked) {
                 this.priceForCurrency.gross = value;
                 this.onPriceGrossChangeDebounce();
@@ -315,6 +317,8 @@ Component.register('sw-price-field', {
         },
 
         onPriceNetInputChange(value) {
+            console.log(`net input-change: ${value}`);
+
             if (this.priceForCurrency.linked) {
                 this.priceForCurrency.net = value;
                 this.onPriceNetChangeDebounce();
@@ -322,6 +326,8 @@ Component.register('sw-price-field', {
         },
 
         onPriceGrossChange(value) {
+            console.log(`gross price update:value: ${value}`);
+
             if (this.priceForCurrency.linked) {
                 this.$emit('price-calculate', true);
                 this.$emit('price-gross-change', value);
@@ -331,6 +337,8 @@ Component.register('sw-price-field', {
         },
 
         onPriceNetChange(value) {
+            console.log(`net price update:value: ${value}`);
+
             if (this.priceForCurrency.linked) {
                 this.$emit('price-calculate', true);
                 this.$emit('price-net-change', value);
@@ -352,7 +360,7 @@ Component.register('sw-price-field', {
             this.$emit('price-calculate', true);
 
             this.requestTaxValue(value, 'net').then((res) => {
-                const newValue = this.priceForCurrency.net + res;
+                const newValue = value + res;
                 this.priceForCurrency.gross = parseFloat(newValue.toPrecision(14));
             });
             return true;
@@ -373,7 +381,7 @@ Component.register('sw-price-field', {
             this.$emit('price-calculate', true);
 
             this.requestTaxValue(value, 'gross').then((res) => {
-                const newValue = this.priceForCurrency.gross - res;
+                const newValue = value - res;
                 this.priceForCurrency.net = parseFloat(newValue.toPrecision(14));
             });
             return true;
