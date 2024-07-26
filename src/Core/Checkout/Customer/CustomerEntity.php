@@ -657,28 +657,20 @@ class CustomerEntity extends Entity implements \Stringable
 
     public function getActiveBillingAddress(): ?CustomerAddressEntity
     {
-        if (!$this->activeBillingAddress) {
-            return $this->defaultBillingAddress;
-        }
-
-        return $this->activeBillingAddress;
+        return $this->activeBillingAddress ?? $this->defaultBillingAddress;
     }
 
-    public function setActiveBillingAddress(CustomerAddressEntity $activeBillingAddress): void
+    public function setActiveBillingAddress(?CustomerAddressEntity $activeBillingAddress): void
     {
         $this->activeBillingAddress = $activeBillingAddress;
     }
 
     public function getActiveShippingAddress(): ?CustomerAddressEntity
     {
-        if (!$this->activeShippingAddress) {
-            return $this->defaultShippingAddress;
-        }
-
-        return $this->activeShippingAddress;
+        return $this->activeShippingAddress ?? $this->defaultShippingAddress;
     }
 
-    public function setActiveShippingAddress(CustomerAddressEntity $activeShippingAddress): void
+    public function setActiveShippingAddress(?CustomerAddressEntity $activeShippingAddress): void
     {
         $this->activeShippingAddress = $activeShippingAddress;
     }
