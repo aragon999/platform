@@ -222,10 +222,6 @@ function handlePropertyMappings(propertyDefinitions, mappings, pathPrefix, deep 
             if (propSchema.entity) {
                 addToMappingEntity(mappings, propSchema, pathPrefix, property);
             }
-        } else if (property === 'customFields') {
-            console.log(property, propSchema);
-            const customFieldSets = Shopware.Service('customFieldService').getCustomFieldSets(pathPrefix);
-            console.log(customFieldSets);
         } else {
             let schemaType = propSchema.type;
 
