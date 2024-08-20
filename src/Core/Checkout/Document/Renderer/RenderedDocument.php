@@ -9,8 +9,6 @@ use Shopware\Core\Framework\Struct\Struct;
 #[Package('checkout')]
 final class RenderedDocument extends Struct
 {
-    private string $content;
-
     /**
      * @param array<string, mixed> $config
      */
@@ -20,7 +18,8 @@ final class RenderedDocument extends Struct
         private string $name = '',
         private readonly string $fileExtension = FileTypes::PDF,
         private readonly array $config = [],
-        private ?string $contentType = 'application/pdf'
+        private ?string $contentType = 'application/pdf',
+        private string $content = '',
     ) {
     }
 

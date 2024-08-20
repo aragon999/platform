@@ -3,7 +3,7 @@
 namespace Shopware\Core\Checkout\Document\Service;
 
 use Doctrine\DBAL\Connection;
-use Shopware\Core\Checkout\Document\Aggregate\DocumentType\DocumentTypeEntity;
+use Shopware\Core\Checkout\Document\DocumentCollection;
 use Shopware\Core\Checkout\Document\DocumentEntity;
 use Shopware\Core\Checkout\Document\DocumentException;
 use Shopware\Core\Checkout\Document\DocumentGenerationResult;
@@ -11,7 +11,6 @@ use Shopware\Core\Checkout\Document\DocumentIdStruct;
 use Shopware\Core\Checkout\Document\Exception\DocumentGenerationException;
 use Shopware\Core\Checkout\Document\Exception\DocumentNumberAlreadyExistsException;
 use Shopware\Core\Checkout\Document\Exception\InvalidDocumentRendererException;
-use Shopware\Core\Checkout\Document\FileGenerator\FileTypes;
 use Shopware\Core\Checkout\Document\Renderer\DocumentRendererConfig;
 use Shopware\Core\Checkout\Document\Renderer\DocumentRendererRegistry;
 use Shopware\Core\Checkout\Document\Renderer\InvoiceRenderer;
@@ -19,7 +18,6 @@ use Shopware\Core\Checkout\Document\Renderer\RenderedDocument;
 use Shopware\Core\Checkout\Document\Struct\DocumentGenerateOperation;
 use Shopware\Core\Content\Media\MediaEntity;
 use Shopware\Core\Content\Media\MediaService;
-use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
@@ -37,6 +35,8 @@ class DocumentGenerator
 {
     /**
      * @internal
+     *
+     * @param EntityRepository<DocumentCollection> $documentRepository
      */
     public function __construct(
         private readonly DocumentRendererRegistry $rendererRegistry,
@@ -49,45 +49,21 @@ class DocumentGenerator
 
     public function readDocument(string $documentId, Context $context, string $deepLinkCode = ''): ?RenderedDocument
     {
-        $criteria = new Criteria([$documentId]);
-
-        if ($deepLinkCode !== '') {
-            $criteria->addFilter(new EqualsFilter('deepLinkCode', $deepLinkCode));
-        }
-
-        $criteria->addAssociations([
-            'documentMediaFile',
-            'documentType',
-        ]);
-
-        /** @var DocumentEntity|null $document */
-        $document = $this->documentRepository->search($criteria, $context)->get($documentId);
-
-        if (!$document instanceof DocumentEntity) {
-            throw DocumentException::documentNotFound($documentId);
-        }
-
-        $document = $this->ensureDocumentMediaFileGenerated($document, $context);
-        $documentMediaId = $document->getDocumentMediaFileId();
-
-        if ($documentMediaId === null) {
+        $documentMedia = $this->getOrCreateDocumentMedia($document, $context);
+        if ($documentMedia === null) {
             return null;
         }
 
-        /** @var MediaEntity $documentMedia */
-        $documentMedia = $document->getDocumentMediaFile();
+        $documentContent = $context->scope(
+            Context::SYSTEM_SCOPE,
+            fn (Context $context): string => $this->mediaService->loadFile($documentMedia->getId(), $context)
+        );
 
-        $fileBlob = $context->scope(Context::SYSTEM_SCOPE, fn (Context $context): string => $this->mediaService->loadFile($documentMediaId, $context));
-
-        $fileName = $documentMedia->getFileName() . '.' . $documentMedia->getFileExtension();
-        $contentType = $documentMedia->getMimeType();
-
-        $renderedDocument = new RenderedDocument();
-        $renderedDocument->setContent($fileBlob);
-        $renderedDocument->setName($fileName);
-        $renderedDocument->setContentType($contentType);
-
-        return $renderedDocument;
+        return new RenderedDocument(
+            name: sprintf('%s.%s', $documentMedia->getFileName(), $documentMedia->getFileExtension()),
+            contentType: $documentMedia->getMimeType(),
+            content: $documentContent,
+        );
     }
 
     public function preview(string $documentType, DocumentGenerateOperation $operation, string $deepLinkCode, Context $context): RenderedDocument
@@ -101,9 +77,9 @@ class DocumentGenerator
         }
 
         $rendered = $this->rendererRegistry->render($documentType, [$operation->getOrderId() => $operation], $context, $config);
-        $document = $rendered->getOrderSuccess($operation->getOrderId());
 
-        if (!$document instanceof RenderedDocument) {
+        $document = $rendered->getOrderSuccess($operation->getOrderId());
+        if ($document === null) {
             throw DocumentException::generationError($rendered->getOrderError($operation->getOrderId())?->getMessage());
         }
 
@@ -113,12 +89,11 @@ class DocumentGenerator
     }
 
     /**
-     * @param DocumentGenerateOperation[] $operations
+     * @param array<string, DocumentGenerateOperation> $operations
      */
     public function generate(string $documentType, array $operations, Context $context): DocumentGenerationResult
     {
         $documentTypeId = $this->getDocumentTypeByName($documentType);
-
         if ($documentTypeId === null) {
             throw new InvalidDocumentRendererException($documentType);
         }
@@ -138,16 +113,18 @@ class DocumentGenerator
         foreach ($operations as $orderId => $operation) {
             try {
                 $document = $success[$orderId] ?? null;
-
-                if (!($document instanceof RenderedDocument)) {
+                if ($document === null) {
                     continue;
                 }
 
-                $this->checkDocumentNumberAlreadyExits($documentType, $document->getNumber(), $operation->getDocumentId());
+                if ($this->checkDocumentNumberAlreadyExits($documentType, $document->getNumber(), $operation->getDocumentId())) {
+                    $result->addError($orderId, new DocumentNumberAlreadyExistsException($document->getNumber()));
+
+                    continue;
+                }
 
                 $deepLinkCode = Random::getAlphanumericString(32);
                 $id = $operation->getDocumentId() ?? Uuid::randomHex();
-
                 $mediaId = $this->resolveMediaId($operation, $context, $document);
 
                 $records[] = [
@@ -169,17 +146,17 @@ class DocumentGenerator
             }
         }
 
-        $this->writeRecords($records, $context);
+        if (count($records) > 0) {
+            $this->documentRepository->upsert($records, $context);
+        }
 
         return $result;
     }
 
     public function upload(string $documentId, Context $context, Request $uploadedFileRequest): DocumentIdStruct
     {
-        /** @var DocumentEntity $document */
-        $document = $this->documentRepository->search(new Criteria([$documentId]), $context)->first();
-
-        if (!($document instanceof DocumentEntity)) {
+        $document = $this->documentRepository->search(new Criteria([$documentId]), $context)->getEntities()->first();
+        if ($document === null) {
             throw DocumentException::documentNotFound($documentId);
         }
 
@@ -191,37 +168,20 @@ class DocumentGenerator
             throw new DocumentGenerationException('This document is dynamically generated and cannot be overwritten');
         }
 
-        $mediaFile = $this->mediaService->fetchFile($uploadedFileRequest);
-
         $fileName = (string) $uploadedFileRequest->query->get('fileName');
-
         if ($fileName === '') {
             throw new DocumentGenerationException('Parameter "fileName" is missing');
         }
 
+        $mediaFile = $this->mediaService->fetchFile($uploadedFileRequest);
         $mediaId = $context->scope(Context::SYSTEM_SCOPE, fn (Context $context): string => $this->mediaService->saveMediaFile($mediaFile, $fileName, $context, 'document'));
 
-        $this->documentRepository->update([
-            [
-                'id' => $documentId,
-                'documentMediaFileId' => $mediaId,
-                'now' => (new \DateTime())->format(Defaults::STORAGE_DATE_TIME_FORMAT),
-            ],
-        ], $context);
+        $this->documentRepository->update([[
+            'id' => $documentId,
+            'documentMediaFileId' => $mediaId,
+        ]], $context);
 
         return new DocumentIdStruct($documentId, $document->getDeepLinkCode(), $mediaId);
-    }
-
-    /**
-     * @param array<mixed> $records
-     */
-    private function writeRecords(array $records, Context $context): void
-    {
-        if (empty($records)) {
-            return;
-        }
-
-        $this->documentRepository->upsert($records, $context);
     }
 
     private function getDocumentTypeByName(string $documentType): ?string
@@ -238,81 +198,98 @@ class DocumentGenerator
         string $documentTypeName,
         string $documentNumber,
         ?string $documentId = null
-    ): void {
-        $sql = '
-            SELECT COUNT(id)
-            FROM document
-            WHERE
-                document_type_id IN (
+    ): bool {
+        $qb = $this->connection->createQueryBuilder();
+        $qb
+            ->select(['COUNT(id)'])
+            ->from('document')
+            ->where($qb->expr()->and(
+                'document_type_id IN (
                     SELECT id
                     FROM document_type
                     WHERE technical_name = :documentTypeName
-                )
-                AND document_number = :documentNumber
-                AND id ' . ($documentId !== null ? '!= :documentId' : 'IS NOT NULL') . '
-            LIMIT 1
-        ';
+                )',
+                $qb->expr()->eq('document_number', ':documentNumber'),
+            ))
+            ->setMaxResults(1)
+            ->setParameters([
+                'documentTypeName' => $documentTypeName,
+                'documentNumber' => $documentNumber,
+            ])
+        ;
 
-        $params = [
-            'documentTypeName' => $documentTypeName,
-            'documentNumber' => $documentNumber,
-        ];
-
-        if ($documentId !== null) {
-            $params['documentId'] = Uuid::fromHexToBytes($documentId);
+        if ($documentId === null) {
+            $qb->andWhere($qb->expr()->isNotNull('id'));
+        } else {
+            $qb->andWhere($qb->expr()->eq('id', ':documentId'))->setParameter('documentId', $documentId);
         }
 
-        $statement = $this->connection->executeQuery($sql, $params);
-
-        $result = (bool) $statement->fetchOne();
-
-        if ($result) {
-            throw new DocumentNumberAlreadyExistsException($documentNumber);
-        }
+        return (bool) $qb->executeQuery()->fetchOne();
     }
 
-    private function ensureDocumentMediaFileGenerated(DocumentEntity $document, Context $context): DocumentEntity
+    private function getOrCreateDocumentMedia(string $documentId, string $deepLinkCode, Context $context): ?MediaEntity
     {
-        $documentMediaId = $document->getDocumentMediaFileId();
-
-        if ($documentMediaId !== null || $document->isStatic()) {
-            return $document;
+        $document = $this->getDocument($documentId, $deepLinkCode, $context);
+        if ($document === null) {
+            throw DocumentException::documentNotFound($documentId);
         }
 
-        $documentId = $document->getId();
+        if ($document->isStatic()) {
+            return null;
+        }
+
+        $documentMediaFile = $document->getDocumentMediaFile();
+        if ($documentMediaFile !== null) {
+            return $documentMediaFile;
+        }
+
+        // If a deep link code is provided, we do not want to generate a new document (with a new deep link code)
+        if ($deepLinkCode !== '') {
+            throw DocumentException::documentNotFound($documentId);
+        }
 
         $operation = new DocumentGenerateOperation(
-            $document->getOrderId(),
-            FileTypes::PDF,
-            $document->getConfig(),
-            $document->getReferencedDocumentId()
+            orderId: $document->getOrderId(),
+            config: $document->getConfig(),
+            referencedDocumentId: $document->getReferencedDocumentId(),
+            documentId: $document->getId(),
         );
 
-        $operation->setDocumentId($documentId);
+        $technicalName = $document->getDocumentType()?->getTechnicalName();
+        assert($technicalName !== null);
 
-        /** @var DocumentTypeEntity $documentType */
-        $documentType = $document->getDocumentType();
+        $documentStruct = $this
+            ->generate($technicalName, [$document->getOrderId() => $operation], $context)
+            ->getSuccess()
+            ->first()
+        ;
 
-        $documentStruct = $this->generate(
-            $documentType->getTechnicalName(),
-            [$document->getOrderId() => $operation],
-            $context
-        )->getSuccess()->first();
-
+        // TODO: Handle error
         if ($documentStruct === null) {
             return $document;
         }
 
         // Fetch the document again because new mediaFile is generated
-        $criteria = new Criteria([$documentId]);
-
-        $criteria->addAssociation('documentMediaFile');
-        $criteria->addAssociation('documentType');
-
-        /** @var DocumentEntity $document */
-        $document = $this->documentRepository->search($criteria, $context)->get($documentId);
+        $document = $this->getDocument($document->getId(), '', $context);
+        assert($document !== null);
 
         return $document;
+    }
+
+    private function getDocument(string $documentId, string $deepLinkCode, Context $context): ?DocumentEntity
+    {
+        $criteria = new Criteria([$documentId]);
+
+        if ($deepLinkCode !== '') {
+            $criteria->addFilter(new EqualsFilter('deepLinkCode', $deepLinkCode));
+        }
+
+        $criteria->addAssociations([
+            'documentMediaFile',
+            'documentType',
+        ]);
+
+        return $this->documentRepository->search($criteria, $context)->getEntities()->first();
     }
 
     private function resolveMediaId(DocumentGenerateOperation $operation, Context $context, RenderedDocument $document): ?string
