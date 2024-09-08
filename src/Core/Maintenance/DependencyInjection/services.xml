@@ -69,6 +69,12 @@
             <tag name="console.command"/>
         </service>
 
+        <service id="Shopware\Core\Maintenance\System\Command\SystemDisableFirstRunWizardCommand">
+            <argument type="service" id="Shopware\Core\Framework\Store\Services\FirstRunWizardService"/>
+
+            <tag name="console.command"/>
+        </service>
+
         <service id="Shopware\Core\Maintenance\System\Service\JwtCertificateGenerator"/>
 
         <service id="Shopware\Core\Maintenance\System\Service\AppUrlVerifier">

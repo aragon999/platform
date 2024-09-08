@@ -49,6 +49,7 @@ class SystemInstallCommand extends Command
             ->addOption('shop-currency', null, InputOption::VALUE_REQUIRED, 'Iso code for the default currency of the shop')
             ->addOption('skip-jwt-keys-generation', null, InputOption::VALUE_NONE, 'Skips generation of jwt private and public key')
             ->addOption('skip-assets-install', null, InputOption::VALUE_NONE, 'Skips installing of assets')
+            ->addOption('skip-first-run-wizard', null, InputOption::VALUE_NONE, 'Does not show the first run wizard on the first login in the administration')
         ;
     }
 
@@ -157,6 +158,12 @@ class SystemInstallCommand extends Command
         if (!$input->getOption('skip-assets-install')) {
             $commands[] = [
                 'command' => 'assets:install',
+            ];
+        }
+
+        if ($input->getOption('skip-first-run-wizard')) {
+            $commands[] = [
+                'command' => 'system:disable-first-run-wizard',
             ];
         }
 
