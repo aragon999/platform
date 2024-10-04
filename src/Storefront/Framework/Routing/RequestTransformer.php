@@ -72,16 +72,15 @@ class RequestTransformer implements RequestTransformerInterface
         SalesChannelRequest::ATTRIBUTE_CANONICAL_LINK,
     ];
 
-    /**
-     * @var array<string>
-     */
-    private array $allowedList = [
+    private const DOES_NOT_REQUIRE_SALESCHANNEL = [
         '/_wdt/',
         '/_profiler/',
         '/_error/',
         '/payment/finalize-transaction',
         '/installer',
         '/_fragment/',
+        // TODO: Think about how this should be handled
+        // '/robots.txt',
     ];
 
     /**
@@ -244,7 +243,7 @@ class RequestTransformer implements RequestTransformerInterface
             }
         }
 
-        foreach ($this->allowedList as $prefix) {
+        foreach (self::DOES_NOT_REQUIRE_SALESCHANNEL as $prefix) {
             if (str_starts_with($pathInfo, $prefix)) {
                 return false;
             }
