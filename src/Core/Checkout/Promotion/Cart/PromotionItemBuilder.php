@@ -9,7 +9,6 @@ use Shopware\Core\Checkout\Cart\Price\Struct\CalculatedPrice;
 use Shopware\Core\Checkout\Cart\Price\Struct\PercentagePriceDefinition;
 use Shopware\Core\Checkout\Cart\Price\Struct\QuantityPriceDefinition;
 use Shopware\Core\Checkout\Promotion\Aggregate\PromotionDiscount\PromotionDiscountEntity;
-use Shopware\Core\Checkout\Promotion\Aggregate\PromotionDiscountPrice\PromotionDiscountPriceCollection;
 use Shopware\Core\Checkout\Promotion\Exception\UnknownPromotionDiscountTypeException;
 use Shopware\Core\Checkout\Promotion\PromotionEntity;
 use Shopware\Core\Content\Rule\RuleCollection;
@@ -40,12 +39,13 @@ class PromotionItemBuilder
         // that might not be from the promotion scope
         $uniqueKey = self::PLACEHOLDER_PREFIX . $code;
 
-        $item = new LineItem(Uuid::fromStringToHex($uniqueKey), PromotionProcessor::LINE_ITEM_TYPE);
+        $item = new LineItem(
+            Uuid::fromStringToHex($uniqueKey),
+            PromotionProcessor::LINE_ITEM_TYPE,
+            $code
+        );
         $item->setLabel($uniqueKey);
         $item->setGood(false);
-
-        // this is used to pass on the code for later usage
-        $item->setReferencedId($code);
 
         // this is important to avoid any side effects when calculating the cart
         // a percentage of 0,00 will just do nothing
@@ -164,16 +164,13 @@ class PromotionItemBuilder
      */
     public function buildDeliveryPlaceholderLineItem(LineItem $discount, QuantityPriceDefinition $priceDefinition, CalculatedPrice $price): LineItem
     {
-        $mayRemove = true;
-        if ($discount->getReferencedId() === null) {
-            $mayRemove = false;
-        }
         // create a fake lineItem that stores our promotion code
         $promotionItem = new LineItem($discount->getId(), PromotionProcessor::LINE_ITEM_TYPE, $discount->getReferencedId(), 1);
+
         $promotionItem->setLabel($discount->getLabel());
         $promotionItem->setDescription($discount->getLabel());
         $promotionItem->setGood(false);
-        $promotionItem->setRemovable($mayRemove);
+        $promotionItem->setRemovable($discount->getReferencedId() === null ? false : true);
         $promotionItem->setPayload($discount->getPayload());
         $promotionItem->setPriceDefinition($priceDefinition);
         $promotionItem->setPrice($price);
@@ -190,52 +187,37 @@ class PromotionItemBuilder
      */
     private function buildPayload(string $code, PromotionDiscountEntity $discount, PromotionEntity $promotion, string $currencyId, float $currencyFactor): array
     {
-        $payload = [];
-
-        // to save how many times a promotion has been used, we need to know the promotion's id during checkout
-        $payload['promotionId'] = $promotion->getId();
-
-        // set promotion priority for sorting
-        $payload['priority'] = $promotion->getPriority();
-
-        // set discountId
-        $payload['discountId'] = $discount->getId();
-
-        // set the discount type absolute, percentage, ...
-        $payload['discountType'] = $discount->getType();
-
-        // set the code of this discount
-        $payload['code'] = $code;
-
-        // set value of discount in payload
-        $payload['value'] = (string) $discount->getValue();
-
-        // specifies the type of the promotion code (fixed, individual, global)
-        $promotionCodeType = 'fixed';
-        if ($promotion->isUseIndividualCodes()) {
-            $promotionCodeType = 'individual';
-        }
-
         if ($code === '') {
             $promotionCodeType = 'global';
-        }
-        $payload['promotionCodeType'] = $promotionCodeType;
-
-        // set our max value for maximum percentage discounts
-        $payload['maxValue'] = '';
-        if ($discount->getType() === PromotionDiscountEntity::TYPE_PERCENTAGE && $discount->getMaxValue() !== null) {
-            $payload['maxValue'] = (string) $this->getCurrencySpecificValue($discount, $discount->getMaxValue(), $currencyId, $currencyFactor);
+        } else if ($promotion->isUseIndividualCodes()) {
+            $promotionCodeType = 'individual';
+        } else {
+            $promotionCodeType = 'fixed';
         }
 
-        // set the scope of the discount cart, delivery....
-        $payload['discountScope'] = $discount->getScope();
+        $maxValue = '';
+        if ($discount->getType() === PromotionDiscountEntity::TYPE_PERCENTAGE
+            && $discount->getMaxValue() !== null) {
+            $maxValue = (string) $this->getCurrencySpecificValue(
+                $discount, $discount->getMaxValue(),
+                $currencyId,
+                $currencyFactor
+            );
+        }
 
-        // specifies if the promotion is not combinable with any other promotion
-        $payload['preventCombination'] = $promotion->isPreventCombination();
-
-        // If all combinations are prevented the exclusions dont matter
-        // otherwise sets a list of excluded promotion ids
-        $payload['exclusions'] = $payload['preventCombination'] ? [] : $promotion->getExclusionIds();
+        $payload = [
+            'promotionId' => $promotion->getId(),
+            'priority' => $promotion->getPriority(),
+            'discountId' => $discount->getId(),
+            'discountType' => $discount->getType(),
+            'code' => $code,
+            'value' => (string) $discount->getValue(),
+            'promotionCodeType' => $promotionCodeType,
+            'maxValue' => $maxValue,
+            'discountScope' => $discount->getScope(),
+            'preventCombination' => $promotion->isPreventCombination(),
+            'exclusions' => $promotion->isPreventCombination() ? [] : $promotion->getExclusionIds(),
+        ];
 
         $payload['groupId'] = '';
         // if we have set a custom setgroup scope, then the group id
@@ -261,19 +243,19 @@ class PromotionItemBuilder
             }
         }
 
-        $payload['filter'] = [
-            'sorterKey' => null,
-            'applierKey' => null,
-            'usageKey' => null,
-            'pickerKey' => null,
-        ];
-
         if ($discount->isConsiderAdvancedRules()) {
             $payload['filter'] = [
                 'sorterKey' => $discount->getSorterKey(),
                 'applierKey' => $discount->getApplierKey(),
                 'usageKey' => $discount->getUsageKey(),
                 'pickerKey' => $discount->getPickerKey(),
+            ];
+        } else {
+            $payload['filter'] = [
+                'sorterKey' => null,
+                'applierKey' => null,
+                'usageKey' => null,
+                'pickerKey' => null,
             ];
         }
 
@@ -287,28 +269,16 @@ class PromotionItemBuilder
     private function getCurrencySpecificValue(PromotionDiscountEntity $discount, float $default, string $currencyId, float $currencyFactor): float
     {
         $currencyPrices = $discount->getPromotionDiscountPrices();
-
-        // if there is no special defined price return default value (=default currency)
-        // multiplied by given currency factor
-        if (!$currencyPrices instanceof PromotionDiscountPriceCollection || $currencyPrices->count() === 0) {
+        if ($currencyPrices === null) {
             return $default * $currencyFactor;
         }
 
-        // there are defined special prices, let's look if we may find one in collection for sales channel currency
-        // if there is one we want to return this otherwise we return standard value
-        // fallback is here the default currency multiplied by given currency factor
-        $discountValue = $default * $currencyFactor;
-
         foreach ($currencyPrices as $currencyPrice) {
             if ($currencyPrice->getCurrencyId() === $currencyId) {
-                // we have found a defined price, we overwrite standard value and break loop
-                $discountValue = $currencyPrice->getPrice();
-
-                break;
+                return $currencyPrice->getPrice();
             }
         }
 
-        // return the value
-        return $discountValue;
+        return $default * $currencyFactor;
     }
 }

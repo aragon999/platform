@@ -13,27 +13,23 @@ class CartPromotionsDataDefinition extends Struct
     /**
      * @var array<string, array<PromotionEntity>>
      */
-    private array $codePromotions;
-
-    /**
-     * @var array<PromotionEntity>
-     */
-    private array $automaticPromotions;
-
-    public function __construct()
-    {
-        $this->codePromotions = [];
-        $this->automaticPromotions = [];
-    }
+    private array $promotions = [];
 
     /**
      * Adds a list of promotions to the existing list of automatic promotions.
+     *
+     * @deprecated tag:v6.7.0 - Will be removed use addPromotions instead
      *
      * @param array<PromotionEntity> $promotions
      */
     public function addAutomaticPromotions(array $promotions): void
     {
-        $this->automaticPromotions = array_merge($this->automaticPromotions, $promotions);
+        Feature::triggerDeprecationOrThrow(
+            'v6.7.0.0',
+            Feature::deprecatedMethodMessage(__CLASS__, __METHOD__, 'v6.7.0.0')
+        );
+
+        $this->addPromotions('', $promotions);
     }
 
     /**
@@ -50,7 +46,7 @@ class CartPromotionsDataDefinition extends Struct
             Feature::deprecatedMethodMessage(__CLASS__, __METHOD__, 'v6.7.0.0')
         );
 
-        return $this->automaticPromotions;
+        return $this->promotions[''];
     }
 
     /**
@@ -67,44 +63,105 @@ class CartPromotionsDataDefinition extends Struct
             Feature::deprecatedMethodMessage(__CLASS__, __METHOD__, 'v6.7.0.0')
         );
 
-        return $this->codePromotions;
+        $codePromotions = $this->promotions;
+        unset($codePromotions['']);
+
+        return $codePromotions;
     }
 
     /**
      * Adds the provided list of promotions to the existing list of promotions for this code.
      *
-     * @param string $code the promotion code
+     * @deprecated tag:v6.7.0 - Will be removed use addPromotions instead
+     *
      * @param array<PromotionEntity> $promotions a list of promotion entities for this code
      */
     public function addCodePromotions(string $code, array $promotions): void
     {
-        if (!\array_key_exists($code, $this->codePromotions)) {
-            $this->codePromotions[$code] = $promotions;
+        Feature::triggerDeprecationOrThrow(
+            'v6.7.0.0',
+            Feature::deprecatedMethodMessage(__CLASS__, __METHOD__, 'v6.7.0.0')
+        );
+
+        $this->addPromotions($code, $promotions);
+    }
+
+    public function addPromotion(string $code, PromotionEntity $promotion): void
+    {
+        if (!isset($this->promotions[$code])) {
+            $this->promotions[$code] = [$promotion];
 
             return;
         }
 
-        $this->codePromotions[$code] = array_merge($this->codePromotions[$code], $promotions);
+        $this->promotions[$code][] = $promotion;
+    }
+
+    /**
+     * @param array<PromotionEntity> $promotions
+     */
+    public function addPromotions(string $code, array $promotions): void
+    {
+        if (!\array_key_exists($code, $this->promotions)) {
+            $this->promotions[$code] = $promotions;
+
+            return;
+        }
+
+        $this->promotions[$code] = array_merge($this->promotions[$code], $promotions);
+    }
+
+    /**
+     * @return \Generator<string, PromotionEntity>
+     */
+    public function iteratePromotions(): \Generator
+    {
+        foreach ($this->promotions as $code => $promotions) {
+            foreach ($promotions as $promotion) {
+                yield $code => $promotion;
+            }
+        }
+    }
+
+    /**
+     * @param array<string> $codes
+     */
+    public function removeNonExistingCodes(array $codes)
+    {
+        // TODO: Does it do the same as before
+        $nonExistingCodes = array_diff_key($this->promotions, array_flip($codes));
+        foreach ($nonExistingCodes as $code) {
+            $this->removeCode((string) $code);
+        }
+    }
+
+    /**
+     * TODO: Rename method?
+     *
+     * @param array<string> $codes
+     */
+    public function getPromotionsToFetch(array $codes)
+    {
+        return array_diff_key(array_flip($codes), $this->promotions);
     }
 
     /**
      * Gets a list of all added automatic and code promotions.
      *
+     * @deprecated tag:v6.7.0 - Will be removed use addPromotions instead
+     *
      * @return list<PromotionCodeTuple>
      */
     public function getPromotionCodeTuples(): array
     {
+        Feature::triggerDeprecationOrThrow(
+            'v6.7.0.0',
+            Feature::deprecatedMethodMessage(__CLASS__, __METHOD__, 'v6.7.0.0')
+        );
+
         $list = [];
-
-        foreach ($this->automaticPromotions as $promotion) {
-            $list[] = new PromotionCodeTuple('', $promotion);
-        }
-
-        foreach ($this->codePromotions as $code => $promotionList) {
-            foreach ($promotionList as $promotion) {
-                // Keep the string cast, as numeric codes will be implicitly cast to integer
-                $list[] = new PromotionCodeTuple((string) $code, $promotion);
-            }
+        foreach ($this->iteratePromotions() as $code => $promotion) {
+            $list[] = new PromotionCodeTuple($code, $promotion);
         }
 
         return $list;
@@ -115,7 +172,7 @@ class CartPromotionsDataDefinition extends Struct
      */
     public function hasCode(string $code): bool
     {
-        return \array_key_exists($code, $this->codePromotions);
+        return \array_key_exists($code, $this->promotions);
     }
 
     /**
@@ -123,11 +180,7 @@ class CartPromotionsDataDefinition extends Struct
      */
     public function removeCode(string $code): void
     {
-        if (!\array_key_exists($code, $this->codePromotions)) {
-            return;
-        }
-
-        unset($this->codePromotions[$code]);
+        unset($this->promotions[$code]);
     }
 
     /**
@@ -137,7 +190,15 @@ class CartPromotionsDataDefinition extends Struct
      */
     public function getAllCodes(): array
     {
-        return array_keys($this->codePromotions);
+        Feature::triggerDeprecationOrThrow(
+            'v6.7.0.0',
+            Feature::deprecatedMethodMessage(__CLASS__, __METHOD__, 'v6.7.0.0')
+        );
+
+        $codes = array_keys($this->promotions);
+        unset($codes['']);
+
+        return $codes;
     }
 
     public function getApiAlias(): string
