@@ -130,9 +130,9 @@ class CartPromotionsDataDefinition extends Struct
     {
         // TODO: Does it do the same as before
         $nonExistingCodes = array_diff_key($this->promotions, array_flip($codes));
-        foreach ($nonExistingCodes as $code) {
-            $this->removeCode((string) $code);
-        }
+        // foreach ($nonExistingCodes as $code) {
+        //     $this->removeCode((string) $code);
+        // }
     }
 
     /**
