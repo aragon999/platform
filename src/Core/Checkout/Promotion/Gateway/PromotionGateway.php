@@ -2,11 +2,14 @@
 
 namespace Shopware\Core\Checkout\Promotion\Gateway;
 
+use Shopware\Core\Checkout\Promotion\Gateway\Template\ActiveDateRange;
 use Shopware\Core\Checkout\Promotion\PromotionCollection;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityCollection;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
+use Shopware\Core\Framework\Feature;
 use Shopware\Core\Framework\Log\Package;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 
@@ -39,6 +42,17 @@ class PromotionGateway implements PromotionGatewayInterface
         $criteria->addSorting(
             new FieldSorting('priority', FieldSorting::DESCENDING)
         );
+
+        if (Feature::isActive('v6.7.0.0')) {
+            $criteria->addFilter(
+                new EqualsFilter('active', true),
+                new EqualsFilter(
+                    'promotion.salesChannels.salesChannelId',
+                    $context->getSalesChannelId()
+                ),
+                new ActiveDateRange(),
+            );
+        }
 
         return $this->promotionRepository->search($criteria, $context->getContext())->getEntities();
     }

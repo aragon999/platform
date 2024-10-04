@@ -19,9 +19,12 @@ use Shopware\Core\Checkout\Promotion\Gateway\PromotionGatewayInterface;
 use Shopware\Core\Checkout\Promotion\Gateway\Template\PermittedAutomaticPromotions;
 use Shopware\Core\Checkout\Promotion\Gateway\Template\PermittedGlobalCodePromotions;
 use Shopware\Core\Checkout\Promotion\Gateway\Template\PermittedIndividualCodePromotions;
+use Shopware\Core\Checkout\Promotion\PromotionCollection;
 use Shopware\Core\Checkout\Promotion\PromotionEntity;
 use Shopware\Core\Framework\DataAbstractionLayer\Exception\InconsistentCriteriaIdsException;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
+use Shopware\Core\Framework\Feature;
 use Shopware\Core\Framework\Log\Package;
 use Shopware\Core\Framework\Util\HtmlSanitizer;
 use Shopware\Core\Framework\Uuid\Uuid;
@@ -170,9 +173,15 @@ class PromotionCollector implements CartDataCollectorInterface
         }
 
         $criteria = new Criteria();
-        $criteria
-            ->addFilter(new PermittedAutomaticPromotions($context->getSalesChannelId()))
-            ->addAssociations(self::REQUIRED_DAL_ASSOCIATIONS);
+        $criteria->addAssociations(self::REQUIRED_DAL_ASSOCIATIONS);
+
+        if (Feature::isActive('v6.7.0.0')) {
+            $criteria->addFilter(new EqualsFilter('useCodes', false));
+        } else {
+            $criteria->addFilter(
+                new PermittedAutomaticPromotions($context->getSalesChannelId())
+            );
+        }
 
         $automaticPromotions = $this->gateway->get($criteria, $context);
 
@@ -209,9 +218,6 @@ class PromotionCollector implements CartDataCollectorInterface
         // in the first iterations we still have a promotion code item
         // and then it is suddenly gone. so we also have to remove
         // entities from our cache if the code is suddenly not provided anymore.
-        /*
-         * @var string
-         */
         foreach ($promotionsList->getAllCodes() as $code) {
             // if code is not existing anymore,
             // make sure to remove it in our list
@@ -224,7 +230,6 @@ class PromotionCollector implements CartDataCollectorInterface
 
         // let's find out what promotions we
         // really need to fetch from our database.
-
         foreach ($allCodes as $code) {
             // check if promotion is already cached
             if ($promotionsList->hasCode($code)) {
@@ -240,35 +245,14 @@ class PromotionCollector implements CartDataCollectorInterface
             $promotionsList->addCodePromotions($code, []);
         }
 
-        // if we have new codes to fetch
-        // make sure to load it and assign it to
-        // the code in our cache list.
-        if (\count($codesToFetch) > 0) {
-            $salesChannelId = $context->getSalesChannel()->getId();
+        foreach ($codesToFetch as $currentCode) {
+            $promotions = $this->getGlobalPromotionsForCode($currentCode, $context);
 
-            foreach ($codesToFetch as $currentCode) {
-                // try to find a global code first because
-                // that search has less data involved
-                $globalCriteria = new Criteria();
-                $globalCriteria
-                    ->addFilter(new PermittedGlobalCodePromotions([$currentCode], $salesChannelId))
-                    ->addAssociations(self::REQUIRED_DAL_ASSOCIATIONS);
+            // If no global promotions were found, maybe individuals?
+            $promotions ??= $this->getIndividualPromotionsForCode($currentCode, $context);
 
-                $foundPromotions = $this->gateway->get($globalCriteria, $context);
-                if ($foundPromotions->count() === 0) {
-                    // no global code, so try with an individual code instead
-                    $individualCriteria = new Criteria();
-                    $individualCriteria
-                        ->addFilter(new PermittedIndividualCodePromotions([$currentCode], $salesChannelId))
-                        ->addAssociations(self::REQUIRED_DAL_ASSOCIATIONS);
-
-                    $foundPromotions = $this->gateway->get($individualCriteria, $context);
-                }
-
-                // if we finally have found promotions add them to our list for the current code
-                if ($foundPromotions->count() > 0) {
-                    $promotionsList->addCodePromotions($currentCode, $foundPromotions->getElements());
-                }
+            if ($promotions !== null) {
+                $promotionsList->addCodePromotions($currentCode, $promotions->getElements());
             }
         }
 
@@ -362,27 +346,21 @@ class PromotionCollector implements CartDataCollectorInterface
     private function buildDiscountLineItems(string $code, PromotionEntity $promotion, Cart $cart, SalesChannelContext $context): array
     {
         $collection = $promotion->getDiscounts();
-
-        if (!$collection instanceof PromotionDiscountCollection) {
+        if ($collection === null) {
             return [];
         }
 
+        if ($cart->getLineItems()->filterType(PromotionProcessor::LINE_ITEM_TYPE)->count() <= 0) {
+            return [];
+        }
+
+        $factor = 1.0;
+        if (!$context->getCurrency()->getIsSystemDefault()) {
+            $factor = $context->getCurrency()->getFactor();
+        }
+
         $lineItems = [];
-
-        foreach ($collection->getElements() as $discount) {
-            $itemIds = $this->getAllLineItemIds($cart);
-
-            // add a new discount line item for this discount
-            // if we have at least one valid item that will be discounted.
-            if (\count($itemIds) <= 0) {
-                continue;
-            }
-
-            $factor = 1.0;
-            if (!$context->getCurrency()->getIsSystemDefault()) {
-                $factor = $context->getCurrency()->getFactor();
-            }
-
+        foreach ($collection as $discount) {
             $discountItem = $this->itemBuilder->buildDiscountLineItem(
                 $code,
                 $promotion,
@@ -409,19 +387,52 @@ class PromotionCollector implements CartDataCollectorInterface
         return $lineItems;
     }
 
-    /**
-     * @return array<string>
-     */
-    private function getAllLineItemIds(Cart $cart): array
+    private function getGlobalPromotionsForCode(string $code, SalesChannelContext $context): ?PromotionCollection
     {
-        return $cart->getLineItems()->fmap(
-            static function (LineItem $lineItem) {
-                if ($lineItem->getType() === PromotionProcessor::LINE_ITEM_TYPE) {
-                    return null;
-                }
+        $criteria = new Criteria();
+        $criteria->addAssociations(self::REQUIRED_DAL_ASSOCIATIONS);
 
-                return $lineItem->getId();
-            }
-        );
+        if (Feature::isActive('v6.7.0.0')) {
+            $criteria->addFilter(
+                new EqualsFilter('useCodes', true),
+                new EqualsFilter('useIndividualCodes', false),
+                new EqualsFilter('code', $code),
+            );
+        } else {
+            $criteria->addFilter(new PermittedGlobalCodePromotions([$code], $context->getSalesChannelId()));
+        }
+
+        $promotions = $this->gateway->get($criteria, $context);
+        if ($promotions->count() === 0) {
+            return null;
+        }
+
+        return $promotions;
+    }
+
+
+    private function getIndividualPromotionsForCode(string $code, SalesChannelContext $context): ?PromotionCollection
+    {
+        $criteria = new Criteria();
+        $criteria->addAssociations(self::REQUIRED_DAL_ASSOCIATIONS);
+
+        if (Feature::isActive('v6.7.0.0')) {
+            $criteria->addFilter(
+                new EqualsFilter('useCodes', true),
+                new EqualsFilter('useIndividualCodes', true),
+                new EqualsFilter('promotion.individualCodes.code', $code),
+                // a payload of null means, they have not yet been redeemed
+                new EqualsFilter('promotion.individualCodes.payload', null),
+            );
+        } else {
+            $criteria->addFilter(new PermittedIndividualCodePromotions([$code], $context->getSalesChannelId()));
+        }
+
+        $promotions = $this->gateway->get($criteria, $context);
+        if ($promotions->count() === 0) {
+            return null;
+        }
+
+        return $promotions;
     }
 }

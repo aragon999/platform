@@ -5,10 +5,13 @@ namespace Shopware\Core\Checkout\Promotion\Gateway\Template;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsAnyFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\MultiFilter;
+use Shopware\Core\Framework\Feature;
 use Shopware\Core\Framework\Log\Package;
 
 /**
  * @final
+ *
+ * @deprecated tag 6.7.0.0 - Will be removed without replacement, use PromotionGateway with the filters
  */
 #[Package('buyers-experience')]
 class PermittedIndividualCodePromotions extends MultiFilter
@@ -24,14 +27,29 @@ class PermittedIndividualCodePromotions extends MultiFilter
         array $codes,
         string $salesChannelId
     ) {
-        $activeDateRange = new ActiveDateRange();
+        Feature::triggerDeprecationOrThrow('v6.7.0.0', 'Will be removed without replacement, use PromotionGateway with the according filters');
+
+        if (Feature::isActive('v6.7.0.0')) {
+            parent::__construct(
+                MultiFilter::CONNECTION_AND,
+                [
+                    new EqualsFilter('useCodes', true),
+                    new EqualsFilter('useIndividualCodes', true),
+                    new EqualsAnyFilter('promotion.individualCodes.code', $codes),
+                    // a payload of null means, they have not yet been redeemed
+                    new EqualsFilter('promotion.individualCodes.payload', null),
+                ]
+            );
+
+            return;
+        }
 
         parent::__construct(
             MultiFilter::CONNECTION_AND,
             [
                 new EqualsFilter('active', true),
                 new EqualsFilter('promotion.salesChannels.salesChannelId', $salesChannelId),
-                $activeDateRange,
+                new ActiveDateRange(),
                 new EqualsFilter('useCodes', true),
                 new EqualsFilter('useIndividualCodes', true),
                 new EqualsAnyFilter('promotion.individualCodes.code', $codes),
