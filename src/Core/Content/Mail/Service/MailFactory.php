@@ -38,13 +38,8 @@ class MailFactory extends AbstractMailFactory
             ->to(...$this->formatMailAddresses($recipients))
             ->setMailAttachmentsConfig($additionalData['attachmentsConfig'] ?? null);
 
-        foreach ($contents as $contentType => $data) {
-            if ($contentType === 'text/html') {
-                $mail->html($data);
-            } else {
-                $mail->text($data);
-            }
-        }
+        $mail->html($contents['text/html']);
+        $mail->html($contents['text/plain']);
 
         foreach ($attachments as $url) {
             $mail->addAttachmentUrl($url);

@@ -62,218 +62,53 @@ class MailService extends AbstractMailService
     {
         $event = new MailBeforeValidateEvent($data, $context, $templateData);
         $this->eventDispatcher->dispatch($event);
+        if ($event->isPropagationStopped()) {
+            return null;
+        }
+
         $data = $event->getData();
         $templateData = $event->getTemplateData();
 
-        if ($event->isPropagationStopped()) {
-            return null;
-        }
+        $this->dataValidator->validate($data, $this->getValidationDefinition($context));
 
-        $definition = $this->getValidationDefinition($context);
-        $this->dataValidator->validate($data, $definition);
+        $salesChannel = $this->getSalesChannel($templateData, $context);
+        $templateData['salesChannel'] = $salesChannel;
+        $templateData['salesChannelId'] = $salesChannel->getId();
 
-        $recipients = $data['recipients'];
-        $salesChannelId = $data['salesChannelId'];
-        $salesChannel = null;
-        $containsValidSalesChannel = $this->templateDataContainsSalesChannel($templateData);
-
-        if (($salesChannelId !== null && !$containsValidSalesChannel) || $this->isTestMode($data)) {
-            $criteria = $this->getSalesChannelDomainCriteria($salesChannelId, $context);
-
-            $salesChannel = $this->salesChannelRepository->search($criteria, $context)->getEntities()->get($salesChannelId);
-            if ($salesChannel === null) {
-                throw new SalesChannelNotFoundException($salesChannelId);
-            }
-
-            $templateData['salesChannel'] = $salesChannel;
-        } elseif ($containsValidSalesChannel) {
-            $salesChannel = $templateData['salesChannel'];
-        }
-
-        $senderEmail = $data['senderMail'] ?? $this->getSender($data, $salesChannelId);
-
-        if ($senderEmail === null) {
-            $event = new MailErrorEvent(
-                $context,
-                Level::Error,
-                null,
-                'senderMail not configured for salesChannel: ' . $salesChannelId . '. Please check system_config \'core.basicInformation.email\'',
-                null,
-                $templateData
-            );
-
-            $this->eventDispatcher->dispatch($event);
-            $this->logger->error(
-                'senderMail not configured for salesChannel: ' . $salesChannelId . '. Please check system_config \'core.basicInformation.email\'',
-                $templateData
-            );
-        }
-
-        $contents = $this->buildContents($data, $salesChannel);
-        if ($this->isTestMode($data)) {
-            $this->templateRenderer->enableTestMode();
-            if (\is_array($templateData['order'] ?? []) && empty($templateData['order']['deepLinkCode'])) {
-                $templateData['order']['deepLinkCode'] = 'home';
-            }
-        }
-        $template = $data['subject'];
-
-        try {
-            $data['subject'] = $this->templateRenderer->render($template, $templateData, $context, false);
-            $template = $data['senderName'];
-            $data['senderName'] = $this->templateRenderer->render($template, $templateData, $context, false);
-            foreach ($contents as $index => $template) {
-                $contents[$index] = $this->templateRenderer->render($template, $templateData, $context, $index !== 'text/plain');
-            }
-        } catch (\Throwable $e) {
-            $event = new MailErrorEvent(
-                $context,
-                Level::Warning,
-                $e,
-                'Could not render Mail-Template with error message: ' . $e->getMessage(),
-                $template,
-                $templateData
-            );
-            $this->eventDispatcher->dispatch($event);
-            $this->logger->warning(
-                'Could not render Mail-Template with error message: ' . $e->getMessage(),
-                array_merge([
-                    'template' => $template,
-                    'exception' => (string) $e,
-                ], $templateData)
-            );
+        $mail = $this->createMail($data, $templateData, $salesChannel, $context);
+        if (trim($mail->getBody()->toString()) === '') {
+            $this->mailError('Mail body is null', $context, $templateData);
 
             return null;
         }
-        if ($this->isTestMode($data)) {
-            $this->templateRenderer->disableTestMode();
+
+        if (isset($data['attachments']) && is_array($data['attachments'])) {
+            foreach ($data['attachments'] as $attachment) {
+                if ($attachment instanceof DataPart) {
+                    $mail->addPart($attachment);
+                }
+            }
         }
 
-        $mediaUrls = $this->getMediaUrls($data, $context);
-
-        $binAttachments = $data['binAttachments'] ?? null;
-
-        $mail = $this->mailFactory->create(
-            $data['subject'],
-            [(string) $senderEmail => $data['senderName']],
-            $recipients,
-            $contents,
-            $mediaUrls,
-            $data,
-            $binAttachments
+        $this->eventDispatcher->dispatch(
+            new MailBeforeSentEvent($data, $mail, $context, $templateData['eventName'] ?? null)
         );
 
-        if (trim($mail->getBody()->toString()) === '') {
-            $event = new MailErrorEvent(
-                $context,
-                Level::Error,
-                null,
-                'mail body is null',
-                null,
-                $templateData
-            );
-
-            $this->eventDispatcher->dispatch($event);
-            $this->logger->error(
-                'mail body is null',
-                $templateData
-            );
-
-            return null;
-        }
-
-        if (isset($data['attachments'])) {
-            foreach ($data['attachments'] as $attachment) {
-                if (!$attachment instanceof DataPart) {
-                    continue;
-                }
-                $mail->addPart($attachment);
-            }
-        }
-
-        $event = new MailBeforeSentEvent($data, $mail, $context, $templateData['eventName'] ?? null);
-        $this->eventDispatcher->dispatch($event);
-
         if ($event->isPropagationStopped()) {
             return null;
-        }
-
-        if ($this->isTestMode($data)) {
-            $headers = $mail->getHeaders();
-            $headers->addTextHeader('X-Shopware-Event-Name', $templateData['eventName'] ?? '');
-            $headers->addTextHeader('X-Shopware-Sales-Channel-Id', $salesChannelId);
-            $headers->addTextHeader('X-Shopware-Language-Id', $context->getLanguageId());
-            $mail->setHeaders($headers);
         }
 
         $this->mailSender->send($mail);
 
-        $event = new MailSentEvent($data['subject'], $recipients, $contents, $context, $templateData['eventName'] ?? null);
-        $this->eventDispatcher->dispatch($event);
+        $this->eventDispatcher->dispatch(new MailSentEvent(
+            $data['subject'],
+            $data['recipients'],
+            ['text/html' => $mail->getHtmlBody(), 'text/plain' => $mail->getTextBody()],
+            $context,
+            $templateData['eventName'] ?? null,
+        ));
 
         return $mail;
-    }
-
-    /**
-     * @param array<string, mixed> $data
-     */
-    private function getSender(array $data, ?string $salesChannelId): ?string
-    {
-        $senderEmail = $data['senderEmail'] ?? null;
-
-        if ($senderEmail !== null && trim((string) $senderEmail) !== '') {
-            return $senderEmail;
-        }
-
-        $senderEmail = $this->systemConfigService->getString('core.basicInformation.email', $salesChannelId);
-
-        if (trim($senderEmail) !== '') {
-            return $senderEmail;
-        }
-
-        $senderEmail = $this->systemConfigService->getString('core.mailerSettings.senderAddress', $salesChannelId);
-
-        if (trim($senderEmail) !== '') {
-            return $senderEmail;
-        }
-
-        return null;
-    }
-
-    /**
-     * Attaches header and footer to given email bodies
-     *
-     * @param array<string, mixed> $data e.g. ['contentHtml' => 'foobar', 'contentPlain' => '<h1>foobar</h1>']
-     *
-     * @return array{'text/plain': string, 'text/html': string} e.g. ['text/plain' => '{{foobar}}', 'text/html' => '<h1>{{foobar}}</h1>']
-     *
-     * @internal
-     */
-    private function buildContents(array $data, ?SalesChannelEntity $salesChannel): array
-    {
-        if ($salesChannel && $mailHeaderFooter = $salesChannel->getMailHeaderFooter()) {
-            $headerPlain = $mailHeaderFooter->getTranslation('headerPlain') ?? '';
-            \assert(\is_string($headerPlain));
-            $footerPlain = $mailHeaderFooter->getTranslation('footerPlain') ?? '';
-            \assert(\is_string($footerPlain));
-            $headerHtml = $mailHeaderFooter->getTranslation('headerHtml') ?? '';
-            \assert(\is_string($headerHtml));
-            $footerHtml = $mailHeaderFooter->getTranslation('footerHtml') ?? '';
-            \assert(\is_string($footerHtml));
-
-            \assert(\is_string($data['contentPlain']));
-            \assert(\is_string($data['contentHtml']));
-
-            return [
-                'text/plain' => \sprintf('%s%s%s', $headerPlain, $data['contentPlain'], $footerPlain),
-                'text/html' => \sprintf('%s%s%s', $headerHtml, $data['contentHtml'], $footerHtml),
-            ];
-        }
-
-        return [
-            'text/html' => $data['contentHtml'],
-            'text/plain' => $data['contentPlain'],
-        ];
     }
 
     private function getValidationDefinition(Context $context): DataValidationDefinition
@@ -288,6 +123,148 @@ class MailService extends AbstractMailService
         $definition->add('senderName', new NotBlank());
 
         return $definition;
+    }
+
+    private function createMail(array &$data, array $templateData, SalesChannelEntity $salesChannel, Context $context): Email
+    {
+        $testMode = $this->systemConfigService->getBool(SetupStagingEvent::CONFIG_FLAG) ?: !empty($data['testMode']);
+
+        $senderEmail = $this->getSender($data, $salesChannel->getId());
+        if ($senderEmail === '') {
+            $this->mailError(
+                sprintf('senderMail not configured for salesChannel: %s. Please check system_config \'core.basicInformation.email\'', $salesChannel->getId()),
+                $context,
+                $templateData,
+            );
+        }
+
+        if ($testMode) {
+            $this->templateRenderer->enableTestMode();
+            if (\is_array($templateData['order'] ?? []) && empty($templateData['order']['deepLinkCode'])) {
+                $templateData['order']['deepLinkCode'] = 'home';
+            }
+        }
+
+        foreach (['subject', 'senderName'] as $renderDataIndex) {
+            try {
+                $data[$renderDataIndex] = $this->templateRenderer->render($data[$renderDataIndex], $templateData, $context, false);
+            } catch (\Throwable $e) {
+                $this->mailError(
+                    'Could not render Mail-Subject with error message: ' . $e->getMessage(),
+                    $context,
+                    array_merge(['template' => $data[$renderDataIndex], 'exception' => (string) $e], $templateData),
+                    $data[$renderDataIndex],
+                    $e,
+                );
+
+                return null;
+            }
+        }
+
+        $contents = [];
+        foreach ($this->buildContents($data, $salesChannel) as $index => $template) {
+            try {
+                $contents[$index] = $this->templateRenderer->render($template, $templateData, $context, $index !== 'text/plain');
+            } catch (\Throwable $e) {
+                $this->mailError(
+                    sprintf('Could not render Mail-Content (%s) with error message: %s', $index, $e->getMessage()),
+                    $context,
+                    array_merge(['template' => $template, 'exception' => (string) $e], $templateData),
+                    $template,
+                    $e,
+                );
+
+                return null;
+            }
+        }
+
+        if ($testMode) {
+            $this->templateRenderer->disableTestMode();
+        }
+
+        $mail = $this->mailFactory->create(
+            $data['subject'],
+            [$senderEmail => $data['senderName']],
+            $data['recipients'],
+            $contents,
+            $this->getMediaUrls($data, $context),
+            $data,
+            $data['binAttachments'] ?? null
+        );
+
+        if ($testMode) {
+            $mail->getHeaders()
+                ->addTextHeader('X-Shopware-Event-Name', $templateData['eventName'] ?? '')
+                ->addTextHeader('X-Shopware-Sales-Channel-Id', $salesChannel->getId())
+                ->addTextHeader('X-Shopware-Language-Id', $context->getLanguageId())
+            ;
+        }
+
+        return $mail;
+    }
+
+    private function mailError(string $errorMessage, Context $context, array $templateData, ?string $template = null, ?\Exception $e = null): void
+    {
+        $this->eventDispatcher->dispatch(
+            new MailErrorEvent($context, Level::Error, $e, $errorMessage, $template, $templateData)
+        );
+
+        $this->logger->error($errorMessage, $templateData);
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private function getSender(array $data, string $salesChannelId): string
+    {
+        $senderEmail = $data['senderEmail'] ?? null;
+        if ($senderEmail !== null && trim((string) $senderEmail) !== '') {
+            return $senderEmail;
+        }
+
+        return trim(
+            $this->systemConfigService->getString(
+                'core.basicInformation.email',
+                $salesChannelId
+            )
+        ) ?: trim(
+            $this->systemConfigService->getString(
+                'core.mailerSettings.senderAddress',
+                $salesChannelId
+            )
+        );
+    }
+
+    /**
+     * Attaches header and footer to given email bodies
+     *
+     * @param array{contentPlain: string, contentHtml: string}
+     *
+     * @return array{'text/plain': string, 'text/html': string} e.g. ['text/plain' => '{{foobar}}', 'text/html' => '<h1>{{foobar}}</h1>']
+     */
+    private function buildContents(array $data, SalesChannelEntity $salesChannel): array
+    {
+        $mailHeaderFooter = $salesChannel->getMailHeaderFooter();
+        if ($mailHeaderFooter !== null) {
+            $headerPlain = $mailHeaderFooter->getTranslation('headerPlain') ?? '';
+            \assert(\is_string($headerPlain));
+            $footerPlain = $mailHeaderFooter->getTranslation('footerPlain') ?? '';
+            \assert(\is_string($footerPlain));
+            $headerHtml = $mailHeaderFooter->getTranslation('headerHtml') ?? '';
+            \assert(\is_string($headerHtml));
+            $footerHtml = $mailHeaderFooter->getTranslation('footerHtml') ?? '';
+            \assert(\is_string($footerHtml));
+
+            return [
+                'text/plain' => \sprintf('%s%s%s', $headerPlain, $data['contentPlain'], $footerPlain),
+                'text/html' => \sprintf('%s%s%s', $headerHtml, $data['contentHtml'], $footerHtml),
+            ];
+        }
+
+        return [
+            'text/html' => $data['contentHtml'],
+            'text/plain' => $data['contentPlain'],
+        ];
     }
 
     /**
@@ -315,37 +292,36 @@ class MailService extends AbstractMailService
         return $urls;
     }
 
-    private function getSalesChannelDomainCriteria(string $salesChannelId, Context $context): Criteria
-    {
-        $criteria = new Criteria([$salesChannelId]);
-        $criteria->setTitle('mail-service::resolve-sales-channel-domain');
-        $criteria->addAssociation('mailHeaderFooter');
-        $criteria->getAssociation('domains')
-            ->addFilter(
-                new EqualsFilter('languageId', $context->getLanguageId())
-            );
-
-        return $criteria;
-    }
-
-    /**
-     * @param array<string, mixed> $data
-     */
-    private function isTestMode(array $data = []): bool
-    {
-        $stagingMode = $this->systemConfigService->getBool(SetupStagingEvent::CONFIG_FLAG);
-        if ($stagingMode) {
-            return true;
-        }
-
-        return !empty($data['testMode']);
-    }
-
     /**
      * @param array<string, mixed> $templateData
      */
-    private function templateDataContainsSalesChannel(array $templateData): bool
+    private function getSalesChannel(array $templateData, Context $context): ?SalesChannelEntity
     {
-        return isset($templateData['salesChannel']) && $templateData['salesChannel'] instanceof SalesChannelEntity;
+        $salesChannel = $templateData['salesChannel'] ?? null;
+        if ($salesChannel instanceof $salesChannel) {
+            return $salesChannel;
+        }
+
+        $salesChannelId = $templateData['salesChannelId'] ?? null;
+        if ($salesChannelId !== null) {
+            $criteria = new Criteria([$salesChannelId]);
+            $criteria->setTitle('mail-service::resolve-sales-channel-domain');
+            $criteria->addAssociation('mailHeaderFooter');
+            $criteria->getAssociation('domains')
+                ->addFilter(
+                    new EqualsFilter('languageId', $context->getLanguageId())
+                );
+
+            $salesChannel = $this->salesChannelRepository->search(
+                $criteria,
+                $context
+            )->getEntities()->first();
+
+            if ($salesChannel === null) {
+                throw new SalesChannelNotFoundException($salesChannelId);
+            }
+        }
+
+        return $salesChannel;
     }
 }
