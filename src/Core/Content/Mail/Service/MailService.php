@@ -58,10 +58,6 @@ class MailService extends AbstractMailService
         throw new DecorationPatternException(self::class);
     }
 
-    /**
-     * @param array<string, mixed> $data
-     * @param array<string, mixed> $templateData
-     */
     public function send(array $data, Context $context, array $templateData = []): ?Email
     {
         $event = new MailBeforeValidateEvent($data, $context, $templateData);

@@ -310,25 +310,38 @@ class SendMailAction extends FlowAction implements DelayableAction
      */
     private function setReplyTo(DataBag $data, array $eventConfig, array $contactFormData): void
     {
-        if (empty($eventConfig['replyTo']) || !\is_string($eventConfig['replyTo'])) {
-            return;
+        $replyTo = $this->getMailConfig('replyTo', $eventConfig, $contactFormData);
+        if ($replyTo !== null) {
+            $data->set('replyTo', $replyTo);
+        }
+    }
+
+    /**
+     *
+     */
+    private function getMailConfig(string $type, array $eventConfig, array $formData): null|string|array
+    {
+        if (!isset($eventConfig[$type]) || !\is_string($eventConfig[$type])) {
+            return null;
         }
 
-        if ($eventConfig['replyTo'] !== self::RECIPIENT_CONFIG_CONTACT_FORM_MAIL) {
-            $data->set('senderMail', $eventConfig['replyTo']);
-
-            return;
+        if ($eventConfig[$type] !== self::RECIPIENT_CONFIG_CONTACT_FORM_MAIL) {
+            return $eventConfig[$type];
         }
 
-        if (empty($contactFormData['email']) || !\is_string($contactFormData['email'])) {
-            return;
+        $email = $formData['email'] ?? '';
+        if (!\is_string($email) || $email === '') {
+            return null;
         }
 
-        $data->set(
-            'senderName',
-            '{% if contactFormData.firstName is defined %}{{ contactFormData.firstName }}{% endif %} '
-            . '{% if contactFormData.lastName is defined %}{{ contactFormData.lastName }}{% endif %}'
-        );
-        $data->set('senderMail', $contactFormData['email']);
+        $firstName = $formData['firstName'] ?? '';
+        $lastName = $formData['lastName'] ?? '';
+        $fullName = trim((is_string($firstName) ? $firstName : '') . ' ' . (is_string($lastName) ? $lastName : ''));
+
+        if ($fullName !== '') {
+            return [$email => $fullName];
+        }
+
+        return $email;
     }
 }
