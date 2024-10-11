@@ -224,20 +224,13 @@ class CheckoutControllerTest extends TestCase
         }
 
         // Always add a product to the cart
-        $browser->request(
-            'POST',
-            '/checkout/product/add-by-number',
-            [
-                'number' => 'test.123',
-            ]
-        );
+        $browser->request('POST', EnvironmentHelper::getVariable('APP_URL') . '/checkout/product/add-by-number', [
+            'number' => 'test.123',
+        ]);
         $response = $browser->getResponse();
         static::assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $browser->request(
-            'GET',
-            '/checkout/offcanvas'
-        );
+        $browser->request('GET', EnvironmentHelper::getVariable('APP_URL') . '/checkout/offcanvas');
         $response = $browser->getResponse();
         $contentReturn = $response->getContent();
         static::assertNotFalse($contentReturn);
@@ -245,6 +238,8 @@ class CheckoutControllerTest extends TestCase
         $crawler = new Crawler();
         $crawler->addHtmlContent($contentReturn);
         $errorContent = $crawler->filterXPath('//div[@class="alert-content-container"]')->text();
+        var_dump($errorKeys, $errorContent);
+        echo "\n\n\n";
         foreach ($errorKeys as $errorKey) {
             static::assertStringContainsString($errorKey, $errorContent);
         }
@@ -281,20 +276,13 @@ class CheckoutControllerTest extends TestCase
         }
 
         // Always add a product to the cart
-        $browser->request(
-            'POST',
-            '/checkout/product/add-by-number',
-            [
-                'number' => 'test.123',
-            ]
-        );
+        $browser->request('POST', EnvironmentHelper::getVariable('APP_URL') . '/checkout/product/add-by-number', [
+            'number' => 'test.123',
+        ]);
         $response = $browser->getResponse();
         static::assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $browser->request(
-            'GET',
-            '/checkout/confirm'
-        );
+        $browser->request('GET', EnvironmentHelper::getVariable('APP_URL') . '/checkout/confirm');
         $response = $browser->getResponse();
         $contentReturn = $response->getContent();
         static::assertNotFalse($contentReturn);
@@ -435,10 +423,7 @@ class CheckoutControllerTest extends TestCase
     {
         $browser = $this->getBrowserWithLoggedInCustomer();
 
-        $browser->request(
-            'GET',
-            '/checkout/cart'
-        );
+        $browser->request('GET', EnvironmentHelper::getVariable('APP_URL') . '/checkout/cart');
 
         $traces = $this->getContainer()->get(ScriptTraces::class)->getTraces();
 
@@ -469,15 +454,11 @@ class CheckoutControllerTest extends TestCase
         $this->createProductOnDatabase($productId, 'test.123', $browserSalesChannelId);
 
         // Always add a product to the cart
-        $browser->request(
-            'POST',
-            '/checkout/product/add-by-number',
-            [
-                'number' => 'test.123',
-            ]
-        );
+        $browser->request('POST', EnvironmentHelper::getVariable('APP_URL') . '/checkout/product/add-by-number', [
+            'number' => 'test.123',
+        ]);
 
-        $browser->request('GET', '/checkout/cart.json');
+        $browser->request('GET', EnvironmentHelper::getVariable('APP_URL') . '/checkout/cart.json');
 
         $response = $browser->getResponse();
 
