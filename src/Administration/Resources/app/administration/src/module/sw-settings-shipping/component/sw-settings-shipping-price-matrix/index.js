@@ -312,7 +312,11 @@ export default {
                 return;
             }
 
-            this.ruleRepository.get(ruleId, Context.api).then((rule) => {
+            if (!ruleId) {
+                return;
+            }
+
+            this.ruleRepository.get(ruleId).then((rule) => {
                 this.priceGroup.prices.forEach((shippingPrice) => {
                     shippingPrice.ruleId = ruleId;
                     shippingPrice.rule = rule;

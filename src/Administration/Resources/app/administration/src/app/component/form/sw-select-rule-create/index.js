@@ -121,7 +121,7 @@ Component.register('sw-select-rule-create', {
 
     methods: {
         onSaveRule(ruleId, rule) {
-            if (this.rules) {
+            if (this.rules && rule) {
                 this.rules.add(rule);
             }
 
@@ -140,12 +140,6 @@ Component.register('sw-select-rule-create', {
 
         onCloseRuleModal() {
             this.showRuleModal = false;
-        },
-
-        onRuleSelectInput(event) {
-            if (!event) {
-                this.$emit('dismiss-rule');
-            }
         },
 
         isRuleRestricted(rule) {
