@@ -14,8 +14,7 @@ const { Criteria } = Shopware.Data;
  * <sw-select-rule-create
  *     ruleId="0fd38734776f41e9a1ba431f1667e677"
  *     ruleFilter="ruleFilter"
- *     \@save-rule="onSaveRule"
- *     \@dismiss-rule="onDismissRule">
+ *     \@save-rule="onSaveRule">
  * </sw-select-rule-create>
  */
 Component.register('sw-select-rule-create', {
@@ -30,10 +29,7 @@ Component.register('sw-select-rule-create', {
         'ruleConditionDataProviderService',
     ],
 
-    emits: [
-        'save-rule',
-        'dismiss-rule',
-    ],
+    emits: ['save-rule'],
 
     props: {
         ruleId: {
@@ -121,7 +117,7 @@ Component.register('sw-select-rule-create', {
 
     methods: {
         onSaveRule(ruleId, rule) {
-            if (this.rules) {
+            if (this.rules && rule) {
                 this.rules.add(rule);
             }
 
@@ -140,12 +136,6 @@ Component.register('sw-select-rule-create', {
 
         onCloseRuleModal() {
             this.showRuleModal = false;
-        },
-
-        onRuleSelectInput(event) {
-            if (!event) {
-                this.$emit('dismiss-rule');
-            }
         },
 
         isRuleRestricted(rule) {
