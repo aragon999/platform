@@ -9,6 +9,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\EntityCollection;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Exception\InconsistentCriteriaIdsException;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\Feature;
 use Shopware\Core\Framework\Log\Package;
 use Shopware\Core\Framework\Notification\NotificationService;
 use Shopware\Core\Framework\Uuid\Uuid;
@@ -220,8 +221,11 @@ class ThemeService implements ResetInterface
 
         $themeConfigFieldFactory = new ThemeConfigFieldFactory();
         $configFields = [];
-        $labels = array_replace_recursive($baseTheme->getLabels() ?? [], $theme->getLabels() ?? []);
-        $helpTexts = array_replace_recursive($baseTheme->getHelpTexts() ?? [], $theme->getHelpTexts() ?? []);
+
+        if (!Feature::isActive('v6.8.0.0')) {
+            $labels = array_replace_recursive($baseTheme->getLabels() ?? [], $theme->getLabels() ?? []);
+            $helpTexts = array_replace_recursive($baseTheme->getHelpTexts() ?? [], $theme->getHelpTexts() ?? []);
+        }
 
         if ($theme->getParentThemeId()) {
             foreach ($this->getParentThemes($themes, $theme) as $parentTheme) {
@@ -236,6 +240,16 @@ class ThemeService implements ResetInterface
         $themeConfig = array_replace_recursive($baseThemeConfig, $configuredTheme);
 
         foreach ($themeConfig['fields'] ?? [] as $name => $item) {
+            if (Feature::isActive('v6.8.0.0')) {
+                if (isset($item['label'])) {
+                    unset($item['label']);
+                }
+
+                if (isset($item['helpText'])) {
+                    unset($item['helpText']);
+                }
+            }
+
             $configFields[$name] = $themeConfigFieldFactory->create($name, $item);
             if (
                 isset($item['value'], $configuredTheme['fields'])
