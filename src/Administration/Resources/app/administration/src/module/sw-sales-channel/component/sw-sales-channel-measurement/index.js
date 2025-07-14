@@ -138,8 +138,8 @@ export default Shopware.Component.wrapComponentConfig({
         },
     },
 
-    created() {
-        this.createdComponent();
+    async created() {
+        await this.createdComponent();
     },
 
     methods: {

@@ -84,8 +84,8 @@ export default {
         },
     },
 
-    created() {
-        this.createdComponent();
+    async created() {
+        await this.createdComponent();
     },
 
     methods: {
