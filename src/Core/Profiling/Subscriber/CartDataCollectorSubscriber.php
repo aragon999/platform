@@ -11,6 +11,7 @@ use Symfony\Bundle\FrameworkBundle\DataCollector\AbstractDataCollector;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Contracts\Service\ResetInterface;
 
 /**
@@ -23,8 +24,12 @@ class CartDataCollectorSubscriber extends AbstractDataCollector implements Event
 
     private ?SalesChannelContext $salesChannelContext = null;
 
-    public function __construct(private readonly AbstractCartPersister $cartPersister)
-    {
+    public function __construct(
+        private readonly AbstractCartPersister $cartPersister,
+        private readonly array $collectorServices = [],
+        private readonly array $processorServices = [],
+        private readonly ?ContainerInterface $container = null,
+    ) {
     }
 
     public static function getSubscribedEvents(): array
@@ -67,9 +72,24 @@ class CartDataCollectorSubscriber extends AbstractDataCollector implements Event
         return $this->getCart()?->getPrice()?->getTotalPrice() ?? 0.0;
     }
 
+    public function getCollectors(): array
+    {
+        return $this->data['collectors'] ?? [];
+    }
+
+    public function getProcessors(): array
+    {
+        return $this->data['processors'] ?? [];
+    }
+
     public function collect(Request $request, Response $response, ?\Throwable $exception = null): void
     {
-        $this->data = ['cart' => $this->getCartData(), 'currency' => $this->salesChannelContext?->getCurrency()->getIsoCode()];
+        $this->data = [
+            'cart' => $this->getCartData(),
+            'currency' => $this->salesChannelContext?->getCurrency()->getIsoCode(),
+            'collectors' => $this->getCollectorsWithPriority(),
+            'processors' => $this->getProcessorsWithPriority(),
+        ];
     }
 
     public static function getTemplate(): string
@@ -94,5 +114,65 @@ class CartDataCollectorSubscriber extends AbstractDataCollector implements Event
         } catch (\Exception) {
             return null;
         }
+    }
+
+    private function getCollectorsWithPriority(): array
+    {
+        $collectors = [];
+
+        // Process the collector services information from the compiler pass
+        foreach ($this->collectorServices as $serviceId => $info) {
+            if ($this->container && $this->container->has($serviceId)) {
+                $service = $this->container->get($serviceId);
+                $collectors[] = [
+                    'serviceId' => $serviceId,
+                    'class' => get_class($service),
+                    'priority' => $info['priority'],
+                    'decorates' => $info['decorates'],
+                    'decoratedBy' => $info['decoratedBy'],
+                ];
+            } else {
+                // Fallback when the container is not available or service not found
+                $collectors[] = [
+                    'serviceId' => $serviceId,
+                    'class' => $serviceId, // Use the service ID as a fallback
+                    'priority' => $info['priority'],
+                    'decorates' => $info['decorates'],
+                    'decoratedBy' => $info['decoratedBy'],
+                ];
+            }
+        }
+
+        return $collectors;
+    }
+
+    private function getProcessorsWithPriority(): array
+    {
+        $processors = [];
+
+        // Process the processor services information from the compiler pass
+        foreach ($this->processorServices as $serviceId => $info) {
+            if ($this->container && $this->container->has($serviceId)) {
+                $service = $this->container->get($serviceId);
+                $processors[] = [
+                    'serviceId' => $serviceId,
+                    'class' => get_class($service),
+                    'priority' => $info['priority'],
+                    'decorates' => $info['decorates'],
+                    'decoratedBy' => $info['decoratedBy'],
+                ];
+            } else {
+                // Fallback when the container is not available or service not found
+                $processors[] = [
+                    'serviceId' => $serviceId,
+                    'class' => $serviceId, // Use the service ID as a fallback
+                    'priority' => $info['priority'],
+                    'decorates' => $info['decorates'],
+                    'decoratedBy' => $info['decoratedBy'],
+                ];
+            }
+        }
+
+        return $processors;
     }
 }

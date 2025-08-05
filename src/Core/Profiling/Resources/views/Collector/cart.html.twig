@@ -140,6 +140,125 @@
         {% endif %}
     {% endif %}
 
+    {# Display Cart Collectors and Processors #}
+    <h2>Cart Services</h2>
+    <div class="sf-tabs">
+        <div class="tab">
+            <h3 class="tab-title">Collectors <span class="badge">{{ collector.collectors|length }}</span></h3>
+            <div class="tab-content">
+                {% if collector.collectors is empty %}
+                    <div class="empty">
+                        <p>No collectors found.</p>
+                    </div>
+                {% else %}
+                    <table class="collectors-table">
+                        <thead>
+                            <tr>
+                                <th>Service ID</th>
+                                <th>Class</th>
+                                <th class="text-right">Priority</th>
+                                <th>Decoration</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for col in collector.collectors %}
+                                <tr>
+                                    <td class="font-normal">{{ col.serviceId }}</td>
+                                    <td class="font-normal">{{ col.class|abbr_class }}</td>
+                                    <td class="font-normal text-right">{{ col.priority }}</td>
+                                    <td class="font-normal">
+                                        {% if col.decorates %}
+                                            <span class="badge">Decorates: {{ col.decorates.serviceId }} (priority: {{ col.decorates.priority }})</span>
+                                        {% endif %}
+
+                                        {% if col.decoratedBy|length > 0 %}
+                                            <div class="decorated-by">
+                                                <p>Decorated by:</p>
+                                                <ul>
+                                                    {% for decorator in col.decoratedBy %}
+                                                        <li>{{ decorator.serviceId }} (priority: {{ decorator.priority }})</li>
+                                                    {% endfor %}
+                                                </ul>
+                                            </div>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="tab">
+            <h3 class="tab-title">Processors <span class="badge">{{ collector.processors|length }}</span></h3>
+            <div class="tab-content">
+                {% if collector.processors is empty %}
+                    <div class="empty">
+                        <p>No processors found.</p>
+                    </div>
+                {% else %}
+                    <table class="processors-table">
+                        <thead>
+                            <tr>
+                                <th>Service ID</th>
+                                <th>Class</th>
+                                <th class="text-right">Priority</th>
+                                <th>Decoration</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for proc in collector.processors %}
+                                <tr>
+                                    <td class="font-normal">{{ proc.serviceId }}</td>
+                                    <td class="font-normal">{{ proc.class|abbr_class }}</td>
+                                    <td class="font-normal text-right">{{ proc.priority }}</td>
+                                    <td class="font-normal">
+                                        {% if proc.decorates %}
+                                            <span class="badge">Decorates: {{ proc.decorates.serviceId }} (priority: {{ proc.decorates.priority }})</span>
+                                        {% endif %}
+
+                                        {% if proc.decoratedBy|length > 0 %}
+                                            <div class="decorated-by">
+                                                <p>Decorated by:</p>
+                                                <ul>
+                                                    {% for decorator in proc.decoratedBy %}
+                                                        <li>{{ decorator.serviceId }} (priority: {{ decorator.priority }})</li>
+                                                    {% endfor %}
+                                                </ul>
+                                            </div>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .collectors-table,
+        .processors-table {
+            width: 100%;
+        }
+
+        .decorated-by {
+            margin-top: 8px;
+        }
+
+        .decorated-by p {
+            font-weight: bold;
+            margin: 5px 0;
+        }
+
+        .decorated-by ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+    </style>
+
     {% if collector.cart is not null and collector.cart.lineItems is defined and collector.cart.lineItems|length > 0 %}
         <script type="text/javascript">
             document.addEventListener('DOMContentLoaded', function() {
