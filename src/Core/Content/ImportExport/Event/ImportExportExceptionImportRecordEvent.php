@@ -39,11 +39,17 @@ class ImportExportExceptionImportRecordEvent extends Event
         return $this->exception instanceof \Throwable;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function getRecord(): array
     {
         return $this->record;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function getRow(): array
     {
         return $this->row;

@@ -37,6 +37,7 @@ class Sequence extends Struct
         ?Sequence $nextAction,
         string $flowId,
         string $sequenceId,
+        /** @var array<string, mixed> $config */
         array $config = [],
         ?string $appFlowActionId = null
     ): ActionSequence {

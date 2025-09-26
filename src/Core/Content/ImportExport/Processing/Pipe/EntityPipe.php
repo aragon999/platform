@@ -26,7 +26,9 @@ class EntityPipe extends AbstractPipe
     }
 
     /**
-     * @param array<mixed> $record
+     * @param iterable<array<string, mixed>> $record
+     *
+     * @return iterable<array<string, mixed>>
      */
     public function in(Config $config, iterable $record): iterable
     {
@@ -35,6 +37,11 @@ class EntityPipe extends AbstractPipe
         return $this->entitySerializer->serialize($config, $this->definition, $record);
     }
 
+    /**
+     * @param iterable<array<string, mixed>> $record
+     *
+     * @return iterable<array<string, mixed>>
+     */
     public function out(Config $config, iterable $record): iterable
     {
         $this->loadConfig($config);

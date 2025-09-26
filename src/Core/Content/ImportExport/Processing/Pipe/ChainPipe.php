@@ -18,6 +18,11 @@ class ChainPipe extends AbstractPipe
     {
     }
 
+    /**
+     * @param iterable<array<string, mixed>> $record
+     *
+     * @return iterable<array<string, mixed>>
+     */
     public function in(Config $config, iterable $record): iterable
     {
         $generator = $record;
@@ -29,6 +34,11 @@ class ChainPipe extends AbstractPipe
         yield from $generator;
     }
 
+    /**
+     * @param iterable<array<string, mixed>> $record
+     *
+     * @return iterable<array<string, mixed>>
+     */
     public function out(Config $config, iterable $record): iterable
     {
         $pipes = array_reverse($this->chain);

@@ -11,21 +11,32 @@ class ImportExportBeforeExportRecordEvent extends Event
 {
     public function __construct(
         private readonly Config $config,
+        /** @var array<string, mixed> $record */
         private array $record,
+        /** @var array<string, mixed> $originalRecord */
         private readonly array $originalRecord
     ) {
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function getRecord(): array
     {
         return $this->record;
     }
 
+    /**
+     * @param array<string, mixed> $record
+     */
     public function setRecord(array $record): void
     {
         $this->record = $record;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function getOriginalRecord(): array
     {
         return $this->originalRecord;

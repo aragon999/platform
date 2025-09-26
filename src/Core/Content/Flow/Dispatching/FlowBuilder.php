@@ -13,13 +13,18 @@ use Shopware\Core\Framework\Struct\ArrayStruct;
 #[Package('after-sales')]
 class FlowBuilder
 {
+    /**
+     * @param array<int, array<string, mixed>> $flowSequences Array of flow sequence rows as associative arrays
+     */
     public function build(string $id, array $flowSequences): Flow
     {
         $flowSequences = $this->buildHierarchyTree($flowSequences);
 
         $flatBag = new ArrayStruct();
 
+        /** @var array<int, Sequence> $sequences */
         $sequences = [];
+        /** @var array<string, mixed> $flowSequence */
         foreach ($flowSequences as $flowSequence) {
             if ($flowSequence['sequence_id'] === null) {
                 continue;
@@ -33,8 +38,14 @@ class FlowBuilder
         return new Flow($id, $sequences, $flat);
     }
 
+    /**
+     * @param array<int, array<string, mixed>> $flowSequences
+     *
+     * @return array<int, array<string, mixed>>
+     */
     private function buildHierarchyTree(array $flowSequences, ?string $parentId = null): array
     {
+        /** @var array<int, array<string, mixed>> $children */
         $children = [];
 
         foreach ($flowSequences as $key => $flowSequence) {
@@ -47,6 +58,7 @@ class FlowBuilder
             unset($flowSequences[$key]);
         }
 
+        /** @var array<int, array<string, mixed>> $items */
         $items = [];
 
         foreach ($children as $child) {
@@ -57,6 +69,10 @@ class FlowBuilder
         return $items;
     }
 
+    /**
+     * @param array<string, mixed> $sequence
+     * @param array<int, array<string, mixed>> $siblings
+     */
     private function createNestedSequence(array $sequence, array $siblings, ArrayStruct $flatBag): Sequence
     {
         if ($sequence['action_name'] !== null) {
@@ -70,6 +86,10 @@ class FlowBuilder
         return $object;
     }
 
+    /**
+     * @param array<string, mixed> $currentSequence
+     * @param array<int, array<string, mixed>> $siblingSequences
+     */
     private function createNestedAction(array $currentSequence, array $siblingSequences, ArrayStruct $flagBag): Sequence
     {
         $config = $currentSequence['config'] ? json_decode((string) $currentSequence['config'], true, 512, \JSON_THROW_ON_ERROR) : [];
@@ -110,6 +130,9 @@ class FlowBuilder
         );
     }
 
+    /**
+     * @param array<string, mixed> $currentSequence
+     */
     private function createNestedIf(array $currentSequence, ArrayStruct $flagBag): Sequence
     {
         $sequenceChildren = $currentSequence['children'];
@@ -118,12 +141,15 @@ class FlowBuilder
             return Sequence::createIF($currentSequence['rule_id'], $currentSequence['flow_id'], $currentSequence['sequence_id'], null, null);
         }
 
+        /** @var array<int, array<string, mixed>> $trueCases */
         $trueCases = array_filter($sequenceChildren, fn (array $sequence) => (bool) $sequence['true_case'] === true);
 
+        /** @var array<int, array<string, mixed>> $falseCases */
         $falseCases = array_filter($sequenceChildren, fn (array $sequence) => (bool) $sequence['true_case'] === false);
 
         $trueCaseSequence = null;
         if (!empty($trueCases)) {
+            /** @var array<string, mixed> $trueCase */
             $trueCase = array_shift($trueCases);
 
             $trueCaseSequence = $this->createNestedSequence($trueCase, $trueCases, $flagBag);
@@ -131,6 +157,7 @@ class FlowBuilder
 
         $falseCaseSequence = null;
         if (!empty($falseCases)) {
+            /** @var array<string, mixed> $falseCase */
             $falseCase = array_shift($falseCases);
 
             $falseCaseSequence = $this->createNestedSequence($falseCase, $falseCases, $flagBag);
