@@ -10,8 +10,10 @@ use Shopware\Core\Framework\Log\Package;
 class MediaFolderIndexerEvent extends NestedEvent
 {
     public function __construct(
+        /** @var list<string> $ids */
         private readonly array $ids,
         private readonly Context $context,
+        /** @var list<string> $skip */
         private readonly array $skip = []
     ) {
     }
@@ -21,11 +23,17 @@ class MediaFolderIndexerEvent extends NestedEvent
         return $this->context;
     }
 
+    /**
+     * @return list<string>
+     */
     public function getIds(): array
     {
         return $this->ids;
     }
 
+    /**
+     * @return list<string>
+     */
     public function getSkip(): array
     {
         return $this->skip;
