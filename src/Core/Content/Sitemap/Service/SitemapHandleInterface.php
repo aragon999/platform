@@ -7,6 +7,9 @@ use Shopware\Core\Framework\Log\Package;
 #[Package('discovery')]
 interface SitemapHandleInterface
 {
+    /**
+     * @param Url[] $urls
+     */
     public function write(array $urls): void;
 
     public function finish(): void;

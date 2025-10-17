@@ -51,9 +51,6 @@ class SitemapHandle implements SitemapHandleInterface
         $this->tmpFiles[] = $filePath;
     }
 
-    /**
-     * @param Url[] $urls
-     */
     public function write(array $urls): void
     {
         foreach ($urls as $url) {
