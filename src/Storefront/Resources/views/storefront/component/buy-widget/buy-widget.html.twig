@@ -114,9 +114,11 @@
                                 {% endif %}
                             {% endfor %}
 
-                            <meta itemprop="lowPrice" content="{{ lowestPrice }}">
-                            <meta itemprop="highPrice" content="{{ highestPrice }}">
-                            <meta itemprop="offerCount" content="{{ product.calculatedPrices|length }}">
+                            {% block buy_widget_data_rich_snippet_price_range_meta_tags %}
+                                <meta itemprop="lowPrice" content="{{ lowestPrice }}">
+                                <meta itemprop="highPrice" content="{{ highestPrice }}">
+                                <meta itemprop="offerCount" content="{{ product.calculatedPrices|length }}">
+                            {% endblock %}
                         {% endif %}
                     {% endblock %}
 
