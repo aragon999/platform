@@ -261,6 +261,67 @@ class RegisterControllerTest extends TestCase
         static::assertSame('/checkout/confirm', $response->getTargetUrl());
     }
 
+    public function testConfirmRegistrationDoesNotConfirmOnHeadButOnGet(): void
+    {
+        $container = static::getContainer();
+
+        /** @var EntityRepository<CustomerCollection> $customerRepository */
+        $customerRepository = $container->get('customer.repository');
+
+        $systemConfigService = static::getContainer()->get(SystemConfigService::class);
+        $systemConfigService->set('core.loginRegistration.doubleOptInRegistration', true);
+
+        $event = null;
+        $this->catchEvent(CustomerDoubleOptInRegistrationEvent::class, $event);
+
+        $registerController = $this->getRegisterController($container, $systemConfigService, $customerRepository);
+        $registerController->setContainer($container);
+
+        $data = $this->getRegistrationData(false);
+        $request = $this->createRequest();
+
+        $registerController->register($request, $data, $this->salesChannelContext);
+
+        static::assertInstanceOf(CustomerDoubleOptInRegistrationEvent::class, $event);
+
+        $customer = $customerRepository->search(new Criteria([$event->getCustomerId()]), $this->salesChannelContext->getContext())->getEntities()->first();
+        static::assertInstanceOf(CustomerEntity::class, $customer);
+        static::assertFalse($customer->getActive());
+
+        $queryData = new QueryDataBag();
+        $queryData->set('redirectTo', 'frontend.checkout.confirm.page');
+        $queryData->set('hash', $customer->getHash());
+        $queryData->set('em', Hasher::hash($event->getCustomer()->getEmail(), 'sha1'));
+
+        $originalRequestMethod = $_SERVER['REQUEST_METHOD'] ?? null;
+
+        try {
+            $_SERVER['REQUEST_METHOD'] = 'HEAD';
+            $response = $registerController->confirmRegistration($this->salesChannelContext, $queryData);
+            static::assertSame(204, $response->getStatusCode());
+
+            $customerAfterHead = $customerRepository->search(new Criteria([$event->getCustomerId()]), $this->salesChannelContext->getContext())->getEntities()->first();
+            static::assertInstanceOf(CustomerEntity::class, $customerAfterHead);
+            static::assertFalse($customerAfterHead->getActive());
+
+            $_SERVER['REQUEST_METHOD'] = 'GET';
+            $response = $registerController->confirmRegistration($this->salesChannelContext, $queryData);
+            static::assertSame(302, $response->getStatusCode());
+            static::assertInstanceOf(RedirectResponse::class, $response);
+            static::assertSame('/checkout/confirm', $response->getTargetUrl());
+
+            $customerAfterGet = $customerRepository->search(new Criteria([$event->getCustomerId()]), $this->salesChannelContext->getContext())->getEntities()->first();
+            static::assertInstanceOf(CustomerEntity::class, $customerAfterGet);
+            static::assertTrue($customerAfterGet->getActive());
+        } finally {
+            if ($originalRequestMethod === null) {
+                unset($_SERVER['REQUEST_METHOD']);
+            } else {
+                $_SERVER['REQUEST_METHOD'] = $originalRequestMethod;
+            }
+        }
+    }
+
     public function testAccountRegisterPageLoadedHookScriptsAreExecuted(): void
     {
         $response = $this->request('GET', '/account/register', []);
